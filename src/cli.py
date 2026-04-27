@@ -443,10 +443,11 @@ def cmd_missing(col: Collection, args: list[str]) -> list[MissingFileInfo]:
 
 def cmd_preview(col: Collection, args: list[str], nml_path: str = None, outer_args=None) -> None:
     import argparse
+    from datetime import datetime
     parser = argparse.ArgumentParser()
     parser.add_argument("--missing", action="store_true", help="Include missing files")
     parser.add_argument("--duplicates", action="store_true", help="Include duplicates")
-    parser.add_argument("--output", "-o", default="preview.html", help="Output HTML file")
+    parser.add_argument("--output", "-o", default=None, help="Output HTML file")
     parsed, unknown = parser.parse_known_args(args)
 
     config = load_config()
@@ -460,6 +461,12 @@ def cmd_preview(col: Collection, args: list[str], nml_path: str = None, outer_ar
         duplicates = find_duplicates(col.tracks)
 
     html = generate_preview_html(missing, duplicates)
+
+    if parsed.output is None:
+        preview_dir = CONFIG_FILE.parent / "previews"
+        preview_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        parsed.output = str(preview_dir / f"preview_{timestamp}.html")
 
     with open(parsed.output, "w", encoding="utf-8") as f:
         f.write(html)
