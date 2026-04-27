@@ -5,7 +5,7 @@ from pathlib import Path
 import tomllib
 
 
-CONFIG_DIR = Path.home() / ".traktor-tools"
+CONFIG_DIR = Path.home() / "traktor-tools"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
 

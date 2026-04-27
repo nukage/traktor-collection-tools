@@ -17,7 +17,7 @@ from query import (
 )
 from config import (
     load_config, init_default_config, validate_config,
-    format_config, CONFIG_FILE
+    format_config, CONFIG_FILE, CONFIG_DIR
 )
 
 
@@ -463,7 +463,7 @@ def cmd_preview(col: Collection, args: list[str], nml_path: str = None, outer_ar
     html = generate_preview_html(missing, duplicates)
 
     if parsed.output is None:
-        preview_dir = CONFIG_FILE.parent / "previews"
+        preview_dir = CONFIG_DIR / "previews"
         preview_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         parsed.output = str(preview_dir / f"preview_{timestamp}.html")
