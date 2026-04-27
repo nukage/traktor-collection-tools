@@ -150,6 +150,58 @@ from duplicates import (
     find_duplicates, merge_tracks, format_duplicate_group,
     generate_duplicate_report, generate_nml_patch
 )
+from musicbrainz import MusicBrainzLookup, find_tracks_missing_metadata
+
+
+def cmd_lookup(col: Collection, args: list[str], nml_path: str = None, outer_args=None) -> None:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n", "--limit", type=int, default=20)
+    parser.add_argument("--output", "-o", default="metadata_lookup.json")
+    parsed, unknown = parser.parse_known_args(args)
+
+    outer_limit = getattr(outer_args, 'limit', None) if outer_args else None
+
+    # Use subcommand --limit if provided, otherwise outer -n, otherwise default 20
+    limit = parsed.limit if parsed.limit != 20 else (outer_limit if outer_limit and outer_limit != 20 else 20)
+
+    missing = find_tracks_missing_metadata(col.tracks)
+    print(f"Tracks missing metadata: {len(missing)}")
+
+    if not missing:
+        print("All tracks have metadata!")
+        return
+
+    tracks_to_lookup = missing[:limit]
+
+    mb = MusicBrainzLookup()
+    print(f"Looking up {limit} tracks (rate limited, ~{limit}s)...")
+    results = mb.lookup_tracks(tracks_to_lookup)
+
+    found_count = sum(1 for r in results if r.found)
+    print(f"\nFound: {found_count}/{len(results)}")
+
+    if parsed.output:
+        output_data = []
+        for r in results:
+            output_data.append({
+                "artist": r.track.artist,
+                "title": r.track.title,
+                "found": r.found,
+                "album": r.album,
+                "year": r.year,
+                "score": r.score,
+                "error": r.error,
+            })
+        with open(parsed.output, "w", encoding="utf-8") as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
+        print(f"Saved to {parsed.output}")
+
+    print("\nSample results:")
+    for r in results[:10]:
+        status = "FOUND" if r.found else "MISSING"
+        album_str = r.album[:30] if r.album else "-"
+        print(f"  [{status:6}] {r.track.artist[:20]:20} | {r.track.title[:30]:30} | {album_str:30} | {r.year or 0}")
 
 
 def cmd_analyze_bpm(col: Collection, args: list[str]) -> list:
@@ -329,6 +381,7 @@ COMMANDS = {
     "analyze": cmd_analyze_bpm,
     "duplicates": cmd_duplicates,
     "dup": cmd_duplicates,
+    "lookup": cmd_lookup,
 }
 
 
@@ -351,6 +404,7 @@ def main():
         print("  albums           - List all albums")
         print("  stats            - Collection statistics")
         print("  analyze          - Analyze tracks missing BPM")
+        print("  lookup           - Lookup missing metadata via MusicBrainz")
         print("  duplicates       - Find duplicate tracks (alias: dup)")
         print("\nQuery examples:")
         print("  list drum and bass 170-180 recent")
@@ -359,6 +413,7 @@ def main():
         print("  find shadow")
         print("  similar carbon decay")
         print("  analyze --limit 10 --output results.json")
+        print("  lookup -n 20 --output metadata.json  # lookup missing metadata")
         print("  duplicates -n 20 -p cleaned.nml  # generate NML patch file")
         return
 
@@ -371,6 +426,8 @@ def main():
 
     if args.command == "duplicates" or args.command == "dup":
         cmd_duplicates(col, args.args, nml_path=args.nml)
+    elif args.command == "lookup":
+        cmd_lookup(col, args.args, nml_path=args.nml, outer_args=args)
     elif args.command in COMMANDS:
         cmd = COMMANDS[args.command]
         results = cmd(col, args.args)
