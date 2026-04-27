@@ -6,6 +6,7 @@ import sys
 import re
 import json
 import argparse
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import Optional, Tuple
@@ -13,6 +14,10 @@ from parser import parse_nml, Track
 from query import (
     Collection, Query, format_track, format_track_simple,
     KEY_NAMES, MUSICAL_KEY_TO_CAMELOT, load_collection
+)
+from config import (
+    load_config, init_default_config, validate_config,
+    format_config, CONFIG_FILE
 )
 
 
@@ -34,6 +39,35 @@ def parse_year(query_str: str) -> Optional[int]:
     return None
 
 
+def parse_playtime(query_str: str) -> tuple[Optional[float], Optional[float]]:
+    min_playtime = None
+    max_playtime = None
+
+    min_match = re.search(r'min-playtime\s+(\d+(?:\.\d+)?)', query_str, re.IGNORECASE)
+    if min_match:
+        min_playtime = float(min_match.group(1))
+    else:
+        min_match = re.search(r'min\s+(?:(\d+):(\d+)|(\d+(?:\.\d+)?))', query_str, re.IGNORECASE)
+        if min_match:
+            if min_match.group(1):
+                min_playtime = int(min_match.group(1)) * 60 + int(min_match.group(2))
+            else:
+                min_playtime = float(min_match.group(3))
+
+    max_match = re.search(r'max-playtime\s+(\d+(?:\.\d+)?)', query_str, re.IGNORECASE)
+    if max_match:
+        max_playtime = float(max_match.group(1))
+    else:
+        max_match = re.search(r'max\s+(?:(\d+):(\d+)|(\d+(?:\.\d+)?))', query_str, re.IGNORECASE)
+        if max_match:
+            if max_match.group(1):
+                max_playtime = int(max_match.group(1)) * 60 + int(max_match.group(2))
+            else:
+                max_playtime = float(max_match.group(3))
+
+    return min_playtime, max_playtime
+
+
 def parse_query(query_str: str) -> Query:
     q = Query()
 
@@ -44,6 +78,10 @@ def parse_query(query_str: str) -> Query:
     year = parse_year(query_str)
     if year:
         q.year = year
+
+    min_pt, max_pt = parse_playtime(query_str)
+    q.min_playtime = min_pt
+    q.max_playtime = max_pt
 
     if "recent" in query_str.lower() or "new" in query_str.lower():
         q.import_after = "2024-01-01"
@@ -86,6 +124,14 @@ def parse_query(query_str: str) -> Query:
             if q.bpm_min is None and q.bpm_max is None:
                 q.bpm_min = min_bpm
                 q.bpm_max = max_bpm
+
+    if "sample" in query_str.lower() or "oneshot" in query_str.lower():
+        q.max_playtime = 30
+
+    dnb_terms = ["drum and bass", "dnb", "drum & bass"]
+    if any(term in query_str.lower() for term in dnb_terms):
+        q.min_playtime = 60
+        q.max_playtime = 600
 
     limit_match = re.search(r'(?:top|first|limit)\s+(\d+)', query_str, re.IGNORECASE)
     if limit_match:
@@ -151,6 +197,9 @@ from duplicates import (
     generate_duplicate_report, generate_nml_patch
 )
 from musicbrainz import MusicBrainzLookup, find_tracks_missing_metadata
+from missing import find_missing_files, filter_missing_by_category, format_missing_info, MISSING_CATEGORIES, MissingFileInfo
+from preview import generate_preview_html
+from apply import load_selection, apply_selection
 
 
 def cmd_lookup(col: Collection, args: list[str], nml_path: str = None, outer_args=None) -> None:
@@ -367,6 +416,75 @@ def cmd_export(col: Collection, args: list[str]) -> None:
         print("Supported: .m3u, .txt, .nml")
 
 
+def cmd_missing(col: Collection, args: list[str]) -> list[MissingFileInfo]:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--category", "-c", default="all",
+                        choices=MISSING_CATEGORIES,
+                        help="Filter by status category")
+    parser.add_argument("--nml", default=None,
+                        help="NML collection path (overrides --nml flag)")
+    parsed, unknown = parser.parse_known_args(args)
+
+    try:
+        from config import load_config
+        cfg = load_config()
+    except FileNotFoundError:
+        from config import get_default_config
+        cfg = get_default_config()
+
+    missing_info = find_missing_files(col.tracks, cfg)
+
+    if parsed.category != "all":
+        missing_info = filter_missing_by_category(missing_info, parsed.category)
+
+    return missing_info
+
+
+def cmd_preview(col: Collection, args: list[str], nml_path: str = None, outer_args=None) -> None:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--missing", action="store_true", help="Include missing files")
+    parser.add_argument("--duplicates", action="store_true", help="Include duplicates")
+    parser.add_argument("--output", "-o", default="preview.html", help="Output HTML file")
+    parsed, unknown = parser.parse_known_args(args)
+
+    config = load_config()
+
+    missing = []
+    if parsed.missing or not parsed.duplicates:
+        missing = find_missing_files(col.tracks, config)
+
+    duplicates = []
+    if parsed.duplicates or not parsed.missing:
+        duplicates = find_duplicates(col.tracks)
+
+    html = generate_preview_html(missing, duplicates)
+
+    with open(parsed.output, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"Generated {len(html)} bytes to {parsed.output}")
+    print(f"Open {parsed.output} in a browser to interact with the preview.")
+
+
+def cmd_apply(col: Collection, args: list[str], nml_path: str = None, outer_args=None) -> None:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("selection_file", help="Selection JSON file from preview export")
+    parser.add_argument("--no-backup", action="store_true", help="Skip backup")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would change without applying")
+    parsed, unknown = parser.parse_known_args(args)
+
+    selection = load_selection(parsed.selection_file)
+
+    result = apply_selection(nml_path, selection, backup=not parsed.no_backup, dry_run=parsed.dry_run)
+
+    print(f"Applied changes:")
+    print(f"  Tracks removed: {result.get('removed', 0)}")
+    print(f"  Tracks rebased: {result.get('rebased', 0)}")
+    print(f"  Duplicates merged: {result.get('merged', 0)}")
+
+
 COMMANDS = {
     "list": cmd_list,
     "l": cmd_list,
@@ -382,7 +500,58 @@ COMMANDS = {
     "duplicates": cmd_duplicates,
     "dup": cmd_duplicates,
     "lookup": cmd_lookup,
+    "missing": None,
+    "preview": cmd_preview,
+    "apply": cmd_apply,
+    "config": None,
 }
+
+
+def cmd_config(args: list[str]) -> None:
+    if not args:
+        print("Usage: config <show|init|validate>")
+        return
+
+    subcommand = args[0]
+
+    if subcommand == "show":
+        try:
+            cfg = load_config()
+            print(format_config(cfg))
+        except FileNotFoundError:
+            print(f"Config file not found: {CONFIG_FILE}")
+            print("Run 'config init' to create a default config.")
+        except Exception as e:
+            print(f"Error loading config: {e}")
+
+    elif subcommand == "init":
+        try:
+            cfg = init_default_config()
+            print(f"Created default config: {CONFIG_FILE}")
+            print("\nDefault config:")
+            print(format_config(cfg))
+        except Exception as e:
+            print(f"Error creating config: {e}")
+
+    elif subcommand == "validate":
+        try:
+            cfg = load_config()
+            errors = validate_config(cfg)
+            if errors:
+                print("Config validation failed:")
+                for err in errors:
+                    print(f"  - {err}")
+            else:
+                print("Config is valid.")
+        except FileNotFoundError:
+            print(f"Config file not found: {CONFIG_FILE}")
+            print("Run 'config init' to create a default config.")
+        except Exception as e:
+            print(f"Error loading config: {e}")
+
+    else:
+        print(f"Unknown subcommand: {subcommand}")
+        print("Usage: config <show|init|validate>")
 
 
 def main():
@@ -393,7 +562,9 @@ def main():
                         help="Path to NML collection file")
     parser.add_argument("--limit", "-n", type=int, default=20)
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+    if unknown:
+        args.args = unknown + args.args
 
     if args.command == "help":
         print("Available commands:")
@@ -406,6 +577,10 @@ def main():
         print("  analyze          - Analyze tracks missing BPM")
         print("  lookup           - Lookup missing metadata via MusicBrainz")
         print("  duplicates       - Find duplicate tracks (alias: dup)")
+        print("  missing          - Find missing files from collection")
+        print("  preview          - Generate HTML preview of missing/duplicates")
+        print("  apply            - Apply selection changes from preview export")
+        print("  config <show|init|validate> - Config file management")
         print("\nQuery examples:")
         print("  list drum and bass 170-180 recent")
         print("  list techno 130-140 from 2022")
@@ -415,6 +590,8 @@ def main():
         print("  analyze --limit 10 --output results.json")
         print("  lookup -n 20 --output metadata.json  # lookup missing metadata")
         print("  duplicates -n 20 -p cleaned.nml  # generate NML patch file")
+        print("  preview --missing --duplicates -o preview.html  # generate preview")
+        print("  apply selection.json --dry-run  # preview changes without applying")
         return
 
     nml_path = args.nml
@@ -428,6 +605,16 @@ def main():
         cmd_duplicates(col, args.args, nml_path=args.nml)
     elif args.command == "lookup":
         cmd_lookup(col, args.args, nml_path=args.nml, outer_args=args)
+    elif args.command == "preview":
+        cmd_preview(col, args.args, nml_path=args.nml, outer_args=args)
+    elif args.command == "apply":
+        cmd_apply(col, args.args, nml_path=args.nml, outer_args=args)
+    elif args.command == "config":
+        cmd_config(args.args)
+    elif args.command == "missing":
+        results = cmd_missing(col, args.args)
+        for i, info in enumerate(results[:args.limit or 50]):
+            print(format_missing_info(info, i))
     elif args.command in COMMANDS:
         cmd = COMMANDS[args.command]
         results = cmd(col, args.args)

@@ -25,6 +25,8 @@ class Query:
     file_extension: Optional[str] = None
     has_hotcues: bool = False
     year: Optional[int] = None
+    min_playtime: Optional[float] = None
+    max_playtime: Optional[float] = None
 
 
 class Collection:
@@ -77,6 +79,10 @@ class Collection:
             track_year = int(t.import_date[:4]) if len(t.import_date) >= 4 else 0
             if track_year != q.year:
                 return False
+        if q.min_playtime is not None and t.playtime < q.min_playtime:
+            return False
+        if q.max_playtime is not None and t.playtime > q.max_playtime:
+            return False
         return True
 
     def _sort(self, tracks: list[Track], q: Query) -> list[Track]:
@@ -146,8 +152,9 @@ def format_track(t: Track, index: int = 0) -> str:
     key_name = KEY_NAMES.get(t.musical_key, f"K{t.musical_key}")
     camelot = MUSICAL_KEY_TO_CAMELOT.get(t.musical_key, "?")
     cues = len([c for c in t.cues if c.type == 0 and c.hotcue >= 0])
+    long_flag = "LIKELY MIX" if t.playtime > 600 else ""
     return (f"{index+1:3}. {t.artist[:25]:25} | {t.title[:35]:35} | "
-            f"{t.bpm:6.1f} | {key_name}({camelot}) | {t.album[:30]:30} | {cues} cues")
+            f"{t.bpm:6.1f} | {key_name}({camelot}) | {t.album[:30]:30} | {cues} cues | {long_flag}")
 
 
 def format_track_simple(t: Track) -> str:
