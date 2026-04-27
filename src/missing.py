@@ -1,6 +1,7 @@
 """Missing file scanner for Traktor collection."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -10,6 +11,9 @@ from config import Config, SearchRoot
 
 
 MISSING_CATEGORIES = ["all", "missing", "found_single", "found_multiple", "network_offline"]
+
+SEARCH_TIMEOUT_PER_FILE = 30  # seconds per file search
+EXISTS_TIMEOUT = 5  # seconds for existence check
 
 
 @dataclass
@@ -51,25 +55,78 @@ def _build_full_path(track: Track) -> str:
     return full
 
 
-def _search_for_file(filename: str, search_root: SearchRoot) -> list[str]:
+def _path_exists_with_timeout(path_str: str, timeout: int = EXISTS_TIMEOUT) -> bool:
+    """Check if a path exists with a timeout."""
+    def _check():
+        return os.path.exists(path_str)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_check)
+            return future.result(timeout=timeout)
+    except (FuturesTimeoutError, Exception):
+        return False
+
+
+def _is_network_path(path_str: str) -> bool:
+    """Check if a path is a network path."""
+    if path_str.startswith("\\\\"):
+        return True
+    # Mapped network drives like Z:\ - check if it's a single letter followed by :\ and the drive is not the current system drive
+    if len(path_str) >= 3 and path_str[1] == ':' and path_str[2] == '\\':
+        drive_letter = path_str[0].upper()
+        # Common network drive letters
+        if drive_letter not in ('C',):
+            return True
+    return False
+
+
+def _search_for_file(filename: str, search_root: SearchRoot, timeout: int = SEARCH_TIMEOUT_PER_FILE) -> list[str]:
     """Search for a file by exact filename match within a search root."""
     root_path = Path(search_root.path)
     max_depth = search_root.max_depth
+    filename_lower = filename.lower()
+    found = []
 
     if not root_path.exists():
         return []
 
-    filename_lower = filename.lower()
-    found = []
+    # Skip network paths entirely for searching - too slow
+    if _is_network_path(search_root.path):
+        return []
 
-    for path in root_path.rglob(filename_lower):
-        if path.is_file():
-            try:
-                rel_depth = len(path.relative_to(root_path).parts)
-                if rel_depth <= max_depth:
-                    found.append(str(path))
-            except ValueError:
-                continue
+    def _search():
+        try:
+            for dirpath, dirnames, filenames in os.walk(root_path):
+                try:
+                    rel_path = Path(dirpath).relative_to(root_path)
+                    depth = len(rel_path.parts)
+                    if depth > max_depth:
+                        dirnames.clear()
+                        continue
+                except ValueError:
+                    dirnames.clear()
+                    continue
+
+                for fname in filenames:
+                    if fname.lower() == filename_lower:
+                        full_path = os.path.join(dirpath, fname)
+                        found.append(full_path)
+        except (OSError, PermissionError):
+            pass
+        except Exception:
+            pass
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_search)
+            future.result(timeout=timeout)
+    except FuturesTimeoutError:
+        pass
+    except Exception:
+        pass
+
+    return found
 
     return found
 
@@ -86,7 +143,7 @@ def find_missing_files(tracks: list[Track], config: Config) -> list[MissingFileI
         if full_path.startswith("\\\\"):
             status = "network_offline"
             found_paths = []
-        elif os.path.exists(full_path):
+        elif _path_exists_with_timeout(full_path):
             status = "found_single"
             found_paths = [full_path]
         else:
