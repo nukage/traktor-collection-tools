@@ -1,10 +1,10 @@
 """Apply selection changes from preview HTML export to NML file."""
 
 import json
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 from parser import Track
@@ -30,9 +30,57 @@ def load_selection(path: str) -> SelectionData:
     )
 
 
-def apply_selection(nml_path: str, selection: SelectionData, backup: bool = True, dry_run: bool = False) -> dict:
-    """Apply selection to NML file. Returns dict with stats."""
+def split_path_for_nml(full_path: str) -> tuple[str, str]:
+    """Split a filesystem path into NML VOLUME and FILE components.
+
+    Examples:
+        E:\\Music\\Artist\\Track.mp3 -> ("E:", "Music\\Artist\\Track.mp3")
+        \\\\NAS\\Music\\Track.mp3    -> ("\\\\NAS\\Music", "Track.mp3")
+    """
+    if not full_path:
+        return "", ""
+
+    full_path = full_path.replace("/", "\\")
+
+    if full_path.startswith("\\\\"):
+        parts = full_path.split("\\")
+        if len(parts) >= 4:
+            volume = "\\\\" + parts[2] + "\\" + parts[3]
+            file_path = "\\".join(parts[4:]) if len(parts) > 4 else ""
+            return volume, file_path
+        return full_path, ""
+
+    match = re.match(r"^([A-Z]:)[\\/](.*)$", full_path, re.IGNORECASE)
+    if match:
+        return match.group(1), match.group(2)
+
+    return "", full_path
+
+
+def apply_selection(
+    nml_path: str,
+    selection: SelectionData,
+    track_lookup: dict = None,
+    backup: bool = True,
+    dry_run: bool = False
+) -> dict:
+    """Apply selection to NML file.
+
+    Args:
+        nml_path: Path to NML file
+        selection: Selection data from preview export
+        track_lookup: Optional dict mapping audio_id to track info for dedupe
+        backup: Whether to create backup
+        dry_run: Whether to just preview
+
+    Returns dict with stats:
+        - rebased: count of tracks with rebased paths
+        - removed: count of tracks removed
+        - merged: count of duplicate groups merged
+    """
     import xml.etree.ElementTree as ET
+    from duplicates import find_duplicates, merge_tracks
+    from parser import parse_nml
 
     if backup and not dry_run:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -46,13 +94,25 @@ def apply_selection(nml_path: str, selection: SelectionData, backup: bool = True
     if collection is None:
         return {"error": "No COLLECTION found in NML"}
 
-    stats = {"removed": 0, "rebased": 0, "merged": 0}
+    stats = {"rebased": 0, "removed": 0, "merged": 0}
 
-    audio_id_to_entry = {entry.get("AUDIO_ID", ""): entry for entry in collection.findall("ENTRY")}
-    audio_id_to_track = {t.audio_id: t for t in [parse_track_from_entry(e) for e in collection.findall("ENTRY")]}
-    audio_id_to_track = {k: v for k, v in audio_id_to_track.items() if v is not None}
+    audio_id_to_entry = {}
+    audio_id_to_track = {}
+    for entry in collection.findall("ENTRY"):
+        audio_id = entry.get("AUDIO_ID", "")
+        if audio_id:
+            audio_id_to_entry[audio_id] = entry
+            # Build minimal track object for duplicate detection
+            audio_id_to_track[audio_id] = Track(
+                title=entry.get("TITLE", ""),
+                artist=entry.get("ARTIST", ""),
+                audio_id=audio_id,
+                file_path=entry.find("LOCATION").get("FILE") if entry.find("LOCATION") is not None else "",
+                volume=entry.find("LOCATION").get("VOLUME") if entry.find("LOCATION") is not None else "",
+                volume_id=entry.find("LOCATION").get("VOLUMEID") if entry.find("LOCATION") is not None else "",
+            )
 
-    missing_audio_ids = set()
+    # Handle missing files
     for m in selection.missing:
         audio_id = m.get("audio_id", "")
         action = m.get("action", "")
@@ -61,59 +121,104 @@ def apply_selection(nml_path: str, selection: SelectionData, backup: bool = True
             new_path = m.get("new_path", "")
             if audio_id in audio_id_to_entry and new_path:
                 entry = audio_id_to_entry[audio_id]
+                volume, file_path = split_path_for_nml(new_path)
                 location = entry.find("LOCATION")
                 if location is not None:
                     if not dry_run:
-                        location.set("FILE", new_path)
-                        location.set("VOLUME", "")
+                        location.set("FILE", file_path)
+                        location.set("VOLUME", volume)
+                        location.set("VOLUMEID", "")
                     stats["rebased"] += 1
-        elif action == "ignore":
-            missing_audio_ids.add(audio_id)
 
-    duplicate_group_ids = set()
+        elif action == "delete":
+            if audio_id in audio_id_to_entry:
+                if not dry_run:
+                    collection.remove(audio_id_to_entry[audio_id])
+                stats["removed"] += 1
+
+    # Handle excluded
+    for excl in selection.excluded:
+        excl_id = excl if isinstance(excl, str) else excl.get("audio_id", "")
+        if excl_id and excl_id in audio_id_to_entry:
+            if not dry_run:
+                collection.remove(audio_id_to_entry[excl_id])
+            stats["removed"] += 1
+
+    # Handle duplicates
+    # Re-derive duplicate groups from current collection
+    all_tracks = list(audio_id_to_track.values())
+    duplicate_groups = find_duplicates(all_tracks)
+
+    # Build audio_id -> group_id mapping for current collection
+    audio_id_to_group_id = {}
+    for gid, group in enumerate(duplicate_groups):
+        for t in group.tracks:
+            audio_id_to_group_id[t.audio_id] = gid
+
     for d in selection.duplicates:
-        group_id = d.get("group_id", "")
+        group_id = d.get("group_id", -1)
         action = d.get("action", "")
+        winner_id = d.get("winner_id")
 
-        if action == "merge":
-            duplicate_group_ids.add(group_id)
-        elif action == "ignore":
-            duplicate_group_ids.add(group_id)
+        if group_id < 0 or group_id >= len(duplicate_groups):
+            continue
 
-    tracks_to_remove = set(missing_audio_ids)
-    for d in selection.duplicates:
-        group_id = d.get("group_id", "")
-        action = d.get("action", "")
+        group = duplicate_groups[group_id]
 
-        if action == "merge":
-            winner_id = d.get("winner_id")
-            if winner_id:
-                for entry in collection.findall("ENTRY"):
-                    entry_id = entry.get("AUDIO_ID", "")
-                    if entry_id in audio_id_to_track:
-                        track = audio_id_to_track[entry_id]
-                        if track and hasattr(track, 'audio_id'):
-                            pass
+        if action == "ignore":
+            continue
+
+        elif action == "keep_both":
+            continue
+
+        elif action == "merge":
+            # Determine winner
+            if winner_id and winner_id in [t.audio_id for t in group.tracks]:
+                actual_winner = winner_id
+            else:
+                actual_winner = group.winner.audio_id if group.winner else group.tracks[0].audio_id
+
+            # Remove all non-winners
+            for track in group.tracks:
+                if track.audio_id != actual_winner and track.audio_id in audio_id_to_entry:
+                    if not dry_run:
+                        collection.remove(audio_id_to_entry[track.audio_id])
+                    stats["removed"] += 1
+
+            # If winner changed, update metadata from new winner source
+            if winner_id and winner_id != group.winner.audio_id:
+                new_winner_track = None
+                for t in group.tracks:
+                    if t.audio_id == winner_id:
+                        new_winner_track = t
+                        break
+
+                if new_winner_track and new_winner_track in audio_id_to_track:
+                    # Update winner metadata in NML entry
+                    winner_entry = audio_id_to_entry[winner_id]
+                    # Merge metadata from all variants
+                    merged, _ = merge_tracks(new_winner_track, [t for t in group.tracks if t.audio_id != winner_id], group.same_file)
+                    # Apply merged metadata
+                    if not dry_run:
+                        winner_entry.set("TITLE", merged.title)
+                        winner_entry.set("ARTIST", merged.artist)
+
+                        tempo = winner_entry.find("TEMPO")
+                        if tempo is not None:
+                            tempo.set("BPM", str(merged.bpm))
+                            tempo.set("BPM_QUALITY", str(merged.bpm_quality))
+
+                        info = winner_entry.find("INFO")
+                        if info is not None:
+                            info.set("KEY", str(merged.musical_key))
+                            info.set("PLAYCOUNT", str(merged.playcount))
+
             stats["merged"] += 1
 
-    if selection.excluded:
-        for excl in selection.excluded:
-            excl_id = excl.get("audio_id", "") or excl.get("group_id", "")
-            if excl_id:
-                tracks_to_remove.add(str(excl_id))
-
-    entries_to_keep = []
-    for entry in collection.findall("ENTRY"):
-        audio_id = entry.get("AUDIO_ID", "")
-        if audio_id in tracks_to_remove:
-            if not dry_run:
-                collection.remove(entry)
-            stats["removed"] += 1
-        else:
-            entries_to_keep.append(entry)
-
+    # Update entries count
     if not dry_run:
-        collection.set("ENTRIES", str(len(entries_to_keep)))
+        entries_count = len([e for e in collection.findall("ENTRY")])
+        collection.set("ENTRIES", str(entries_count))
 
         xml_declaration = '<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n'
         nml_str = ET.tostring(root, encoding="unicode")
@@ -124,51 +229,39 @@ def apply_selection(nml_path: str, selection: SelectionData, backup: bool = True
     return stats
 
 
-def parse_track_from_entry(entry_el) -> Optional[Track]:
-    """Parse a Track from an NML ENTRY element."""
-    try:
-        title = entry_el.get("TITLE", "")
-        artist = entry_el.get("ARTIST", "")
-        audio_id = entry_el.get("AUDIO_ID", "")
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python apply.py <selection.json> [nml_path]")
+        print("  selection.json: Selection file from preview export")
+        print("  nml_path: Optional NML path (uses config if not provided)")
+        sys.exit(1)
 
-        location = entry_el.find("LOCATION")
-        file_path = ""
-        volume = ""
-        volume_id = ""
-        if location is not None:
-            file_path = location.get("FILE", "")
-            volume = location.get("VOLUME", "")
-            volume_id = location.get("VOLUMEID", "")
+    selection_file = sys.argv[1]
+    nml_path = sys.argv[2] if len(sys.argv) > 2 else None
 
-        album_el = entry_el.find("ALBUM")
-        album = album_el.get("TITLE", "") if album_el is not None else ""
+    if not nml_path:
+        from config import load_config
+        config = load_config()
+        nml_path = config.traktor_nml
 
-        info = entry_el.find("INFO")
-        playtime = 0.0
-        playcount = 0
-        if info is not None:
-            playtime = float(info.get("PLAYTIME", 0) or 0)
-            playcount = int(info.get("PLAYCOUNT", 0) or 0)
+    print(f"Loading selection from {selection_file}")
+    selection = load_selection(selection_file)
+    print(f"  Missing: {len(selection.missing)}")
+    print(f"  Duplicates: {len(selection.duplicates)}")
+    print(f"  Excluded: {len(selection.excluded)}")
 
-        tempo = entry_el.find("TEMPO")
-        bpm = 0.0
-        bpm_quality = 0.0
-        if tempo is not None:
-            bpm = float(tempo.get("BPM", 0) or 0)
-            bpm_quality = float(tempo.get("BPM_QUALITY", 0) or 0)
+    print(f"\nApplying to {nml_path}")
+    result = apply_selection(nml_path, selection, backup=True, dry_run=True)
 
-        return Track(
-            title=title,
-            artist=artist,
-            file_path=file_path,
-            volume=volume,
-            volume_id=volume_id,
-            album=album,
-            bpm=bpm,
-            bpm_quality=bpm_quality,
-            playtime=playtime,
-            playcount=playcount,
-            audio_id=audio_id,
-        )
-    except Exception:
-        return None
+    print(f"\nDry run results:")
+    print(f"  Would rebase: {result.get('rebased', 0)} tracks")
+    print(f"  Would remove: {result.get('removed', 0)} tracks")
+    print(f"  Would merge: {result.get('merged', 0)} duplicate groups")
+
+    if input("\nApply for real? (y/N): ").lower() == 'y':
+        result = apply_selection(nml_path, selection, backup=True, dry_run=False)
+        print(f"\nApplied:")
+        print(f"  Rebased: {result.get('rebased', 0)} tracks")
+        print(f"  Removed: {result.get('removed', 0)} tracks")
+        print(f"  Merged: {result.get('merged', 0)} duplicate groups")
