@@ -448,6 +448,7 @@ def cmd_preview(col: Collection, args: list[str], nml_path: str = None, outer_ar
     parser.add_argument("--missing", action="store_true", help="Include missing files")
     parser.add_argument("--duplicates", action="store_true", help="Include duplicates")
     parser.add_argument("--output", "-o", default=None, help="Output HTML file")
+    parser.add_argument("--remove-self-matches", action="store_true", default=False, help="Remove found items where found path equals original path")
     parsed, unknown = parser.parse_known_args(args)
 
     config = load_config()
@@ -455,6 +456,7 @@ def cmd_preview(col: Collection, args: list[str], nml_path: str = None, outer_ar
     missing = []
     if parsed.missing or not parsed.duplicates:
         missing = find_missing_files(col.tracks, config)
+        missing = [m for m in missing if not (m.status == 'found_single' and m.found_paths and m.original_path == m.found_paths[0])]
 
     duplicates = []
     if parsed.duplicates or not parsed.missing:

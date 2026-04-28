@@ -27,6 +27,7 @@ class Config:
     traktor_nml: str = ""
     search_roots: list[SearchRoot] = field(default_factory=list)
     path_mappings: list[PathMapping] = field(default_factory=list)
+    use_everything: bool = False
 
 
 def get_default_config() -> Config:
@@ -56,6 +57,8 @@ def config_to_dict(cfg: Config) -> dict:
             {"from_prefix": pm.from_prefix, "to_prefix": pm.to_prefix, "reason": pm.reason}
             for pm in cfg.path_mappings
         ]
+    if cfg.use_everything:
+        result["use_everything"] = cfg.use_everything
     return result
 
 
@@ -84,6 +87,7 @@ def dict_to_config(d: dict) -> Config:
         traktor_nml=traktor_nml,
         search_roots=search_roots,
         path_mappings=path_mappings,
+        use_everything=d.get("everything", {}).get("use_everything", False),
     )
 
 
@@ -126,6 +130,11 @@ def save_config(cfg: Config, config_path: Path = None) -> None:
         lines.append(f"from_prefix = {_toml_escape(pm.from_prefix)}")
         lines.append(f"to_prefix = {_toml_escape(pm.to_prefix)}")
         lines.append(f"reason = {_toml_escape(pm.reason)}")
+
+    if cfg.use_everything:
+        lines.append("")
+        lines.append("[everything]")
+        lines.append(f"use_everything = {cfg.use_everything}")
 
     with open(config_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

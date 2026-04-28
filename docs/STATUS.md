@@ -1,20 +1,21 @@
-# DJ Collection Manager — Status
+# DJ Collection Manager — Status (Updated 2026-04-28)
 
 ## What Was Built
 
-### Core Infrastructure
+### Core Infrastructure ✅
 
 | Component | File | Status |
 |-----------|------|--------|
-| NML Parser | `src/parser.py` | Done |
-| Collection Query Engine | `src/query.py` | Done |
-| CLI | `src/cli.py` | Done |
-| BPM Analyzer | `src/bpm_analyzer.py` | Done |
-| Duplicate Detection | `src/duplicates.py` | Done |
-| Config System | `src/config.py` | Done |
-| Missing File Scanner | `src/missing.py` | Done |
-| HTML Preview Generator | `src/preview.py` | Done |
-| Apply Changes | `src/apply.py` | Done |
+| NML Parser | `src/parser.py` | ✅ Working |
+| Collection Query Engine | `src/query.py` | ✅ Working |
+| CLI | `src/cli.py` | ✅ Working |
+| BPM Analyzer | `src/bpm_analyzer.py` | ✅ Working |
+| Duplicate Detection | `src/duplicates.py` | ✅ Working |
+| Config System | `src/config.py` | ✅ Working |
+| Missing File Scanner | `src/missing.py` | ✅ Working |
+| HTML Preview Generator | `src/preview.py` | ✅ Working |
+| Apply Changes | `src/apply.py` | ✅ Working |
+| Everything Integration | `src/everything.py` | ✅ Working |
 
 ### CLI Commands
 
@@ -37,171 +38,178 @@ config <show|init|validate>  # Config file management
 
 ---
 
-## Phase 1: Collection Audit ✅ DONE
+## Current Working Feature: Missing File Scanner + Preview + Apply
 
-- [x] Locate Traktor NML file (example: `\\UNRAIDTOWER\Storage\Temp\collection.nml`)
-- [x] Parse and index existing collection
-- [x] Output: searchable collection summary in Obsidian
+### Workflow
 
----
+```
+1. python src/cli.py preview --remove-self-matches
+   → Generates HTML preview with all missing/duplicate items
 
-## Phase 2: Natural Language Interface ✅ DONE
+2. Open preview in browser
+   → Interactive selection UI
+   → Click to select items
+   → "Accept All Found" button to auto-select all found items
 
-- [x] Read NML → build queryable structure
-- [x] Allow Tom to ask playlist questions via CLI
-- [x] Return track lists, not automatic imports
-- [ ] **Gaps:**
-  - CLI only, no natural language parsing (e.g., "put together a drum & bass set for tonight")
-  - No playlist membership detection (which playlist a track belongs to)
+3. Export selections from browser
+   → Saves to traktor-tools/selections/selection_YYYY-MM-DD.json
 
----
+4. python src/cli.py apply selections/selection_YYYY-MM-DD.json
+   → Creates backup of collection
+   → Applies changes (rebase paths, remove duplicates, etc.)
+```
 
-## Phase 3: Metadata Repair 🟡 PARTIAL
+### Preview Features
 
-| Task | Status | Notes |
-|------|--------|-------|
-| BPM extraction via audio analysis | Done | librosa-based, requires accessible file paths |
-| Artist/album lookup via MusicBrainz | Done | `lookup` command, rate-limited |
-| Album art fetch | Not done | — |
-| Genre tagging | Done | BPM range heuristics in query engine |
-
----
-
-## Phase 4: Discovery Agent ❌ NOT STARTED
-
-- [ ] Search Beatport, SoundCloud, YouTube for matching tracks
-- [ ] Check against local collection (avoid dupes)
-- [ ] Download new tracks to staging location
-- [ ] Return ranked recommendations
+- **Categories**: All, Missing, Found (Single), Found (Multiple), Network Offline
+- **Filters**: Search by artist/title, playtime range
+- **Status badges**: MISSING (!), FOUND, MULTIPLE, OFFLINE
+- **Size display**: Shows file size (KB) next to found paths
+- **Selection**: Click, Shift+click for range, Ctrl+click for multi-select
+- **"Accept All Found" button**: Pre-selects all items where a replacement was found
 
 ---
 
-## Duplicate Detection ✅ DONE
+## Current Stats (Collection Scan)
 
-- [x] Find near-identical files (normalized artist + title)
-- [x] Score which is better (file size, bitrate, playtime, plays, recency)
-- [x] Identify same-file vs alternate-version (playtime ±1s rule)
-- [x] Merge metadata (BPM, key, cues from same-file variants)
-- [x] Generate NML patch for manual review
-- [x] Flag duplicates for manual review before deletion
+| Status | Count | Description |
+|--------|-------|-------------|
+| found_single | ~4020 | File exists at original path |
+| found_multiple | ~182 | File found but in multiple locations |
+| missing | ~151 | File not found anywhere |
+| network_offline | ~172 | File on Z: network drive (not searched) |
 
----
-
-## Own Tracks Discovery ❌ NOT STARTED
-
-- [ ] Locate production files (Bitwig project folders or other music-making directories)
-- [ ] Identify which tracks have been imported into Traktor vs haven't
-- [ ] Tag and organize releases/unfinished work separately from DJ source material
-- [ ] Prevent "which version is this" confusion by establishing canonical naming/labeling
+**Total tracks in collection**: 4525
 
 ---
 
-## Fresh Start / Portable Collection 🟡 PARTIAL
+## What's Working ✅
 
-- [x] Define "DJ-ready" criteria (file format, tags, BPM detected)
-- [ ] Plan clean import pipeline
-- [ ] USB-first: relative paths in NML
-- [x] Path rebasing when drive letters change (via `missing` + `preview` + `apply`)
-- [ ] Migration from scattered sources to USB
-
----
-
-## NML File Location
-
-Example file: `\\UNRAIDTOWER\Storage\Temp\collection.nml` (5,135 entries as of 2023/12/29)
-
-Typical local path: `%APPDATA%\Native Instruments\Traktor\<version>\`
+1. **NML parsing** - Correctly parses all track metadata, cues, etc.
+2. **Everything HTTP integration** - Searches file index for matches
+3. **File size capture** - Parses sizes from Everything HTML response
+4. **Network drive detection** - Y: and Z: treated as network (slow), not searched
+5. **Preview generation** - HTML with interactive selection
+6. **Apply changes** - Backup + rebase + duplicate removal
+7. **Self-match filtering** - `--remove-self-matches` flag filters items where found path = original path
+8. **Duplicate detection** - Groups by normalized artist|title
 
 ---
 
-## Collection Stats (from example scan)
+## Known Issues / Edge Cases ⚠️
 
-| Metric | Value |
-|--------|-------|
-| Total tracks | 4,544 |
-| With BPM | 4,412 (97%) |
-| BPM range | 75.0 - 215.3 |
-| BPM average | 142.7 |
-| Unique albums | 1,337 |
-| Unique artists | 1,385 |
-| Tracks with stems | 16 |
-| Loop samples | 356 |
-| Tracks with hotcues | 4,351 |
-| Your own tracks | 185 |
-| Duplicate groups found | 400 |
-| Entries flagged for removal | 643 |
+### 1. Filename Mismatches (Truly Missing)
+
+Some tracks are marked MISSING even though the file exists elsewhere with a different filename:
+
+**Example:**
+- NML entry: `FILE="02 Bloodline.mp3"` (no artist prefix)
+- Actual file: `E:\spotdl\Northlane - Bloodline.mp3` (artist prefix added)
+
+**Impact:** Searching for "02 Bloodline.mp3" → 0 results, but "Bloodline.mp3" finds it.
+
+**Severity:** Medium - These are genuinely different filenames, can't auto-match without fuzzy title matching.
+
+### 2. Ampersand vs Comma in Filenames
+
+**Example:**
+- NML entry: `FILE="sace6 & Rain City Drive - easy exit.mp3"` → MISSING
+- Actual file: `E:\spotdl\sace6, Rain City Drive - easy exit.mp3"` → FOUND
+
+**Impact:** `&` vs `,` causes exact filename match to fail.
+
+**Severity:** Low - These are actually separate entries in the collection (indexed at different times).
+
+### 3. Short Titles Matching Multiple Files
+
+**Example:**
+- "4D.mp3" matches: `$IPOWL4D.mp3`, `$RPOWL4D.mp3`, `Northlane - 4D.mp3`
+
+**Impact:** When multiple files have similar names, exact match still works but could pick wrong one.
+
+**Severity:** Low - Exact match still works, just ambiguous.
+
+### 4. Browser Connection Issues
+
+The preview server (MCP browser) occasionally disconnects. Workaround: regenerate preview, access via direct HTTP URL.
+
+**Severity:** Low - Preview file is generated correctly, just browser access is flaky.
+
+### 5. Size-Based Filtering Not Fully Implemented
+
+**Current behavior:** When multiple files found with different sizes, ALL are shown (user picks).
+
+**Ideal behavior:** When original exists and has size, filter found files to only those with similar size (±2%).
+
+**Status:** Infrastructure in place but filtering only triggers when `original_size` exists.
 
 ---
 
-## Next Steps (Priority Order)
+## What's NOT Working ❌
 
-### High Priority
+1. **Fuzzy title matching** - Can't match "02 Bloodline.mp3" to "Northlane - Bloodline.mp3"
+2. **Network drive search** - Y: and Z: are skipped entirely (too slow to scan)
+3. **Backup cleanup** - Old backups accumulate, no auto-cleanup of oldest backups
 
-1. ✅ **MusicBrainz API** — done
-2. ✅ **Missing File Scanner + Preview + Apply** — done
-3. **Own Tracks Discovery** — scan Bitwig project folders, compare to Traktor collection
-4. **End-to-end testing** — verify the full workflow works:
-   - Edit config with actual search paths
-   - Generate preview
-   - Make selections in browser
-   - Export and apply
+---
 
-### Medium Priority
+## Recent Bug Fixes
 
-5. **Natural Language Parser** — convert "put together a drum & bass set for tonight" into query
-6. **Playlist Membership Detection** — detect which playlists tracks belong to
-7. **Album Art Fetch** — from MusicBrainz/Discogs
-
-### Lower Priority
-
-8. **Beatport/SoundCloud Discovery** — search for new tracks based on collection profile
-9. **Web UI** — visual collection management (if HTML preview insufficient)
+| Date | Issue | Fix |
+|------|--------|-----|
+| 2026-04-28 | Everything `file:1` filter causing 0 results | Removed `file:1` from search query |
+| 2026-04-28 | Size parsing regex too strict | Changed from exact span match to permissive `.*?` |
+| 2026-04-28 | E: drive misclassified as network | Only Y: and Z: treated as network drives |
+| 2026-04-28 | Self-matches not filtered | Added `--remove-self-matches` flag |
+| 2026-04-28 | NML DIR attribute ignored | Fixed path construction from DIR + FILE |
+| 2026-04-27 | Found paths shown as MISSING | Parser fix - full_path now uses backslashes |
 
 ---
 
 ## File Structure
 
 ```
-traktor/
-  .git/
-  .gitignore
-  README.md
-  docs/
-    SPEC.md
-    BUILD_PLAN.md
-  src/
-    parser.py       - NML XML parser (Track, Cue dataclasses)
-    query.py        - Collection search engine
-    bpm_analyzer.py - librosa-based BPM detection
-    duplicates.py   - Duplicate detection + NML patch generator
-    cli.py          - All CLI commands
-    config.py       - TOML config system
-    missing.py      - Missing file scanner
-    preview.py      - HTML preview generator
-    apply.py        - Apply selection changes
-    musicbrainz.py  - MusicBrainz API integration
-  analyze.py         - Collection audit script
-  test_parse.py      - Quick parser test
-  collection_data.json - Indexed collection data (gitignored)
-  bpm_analysis.json   - BPM analysis results (gitignored)
+traktor-collection-tools/
+├── src/
+│   ├── parser.py          # NML XML parser
+│   ├── query.py           # Collection search engine
+│   ├── duplicates.py      # Duplicate detection
+│   ├── missing.py         # Missing file scanner + Everything integration
+│   ├── preview.py         # HTML preview generator
+│   ├── apply.py          # Apply selection changes
+│   ├── everything.py      # Everything HTTP API client
+│   ├── config.py         # TOML config system
+│   ├── cli.py             # CLI commands
+│   └── musicbrainz.py    # MusicBrainz API
+├── traktor-tools/
+│   ├── config.toml        # Config file
+│   ├── previews/          # HTML preview files
+│   └── selections/        # Selection JSON files
+├── docs/
+│   ├── SPEC.md
+│   ├── BUILD_PLAN.md
+│   └── STATUS.md
+└── README.md
 ```
 
-### Config File
+### Config Location
 
-Config is stored at `~/.traktor-tools/config.toml`:
+Config is stored at `traktor-tools/config.toml` (in repo, not ~/.traktor-tools):
 
 ```toml
 [paths]
 traktor_nml = "C:\\Users\\nukag\\Documents\\Native Instruments\\Traktor 4.1.0\\collection.nml"
 
+[paths.use_everything]
+enabled = true  # Use Everything HTTP API for fast file search
+
 [[paths.search_roots]]
-path = "E:\\Music"
+path = "E:\\spotdl"
 max_depth = 3
 
-[[paths.mappings]]
-from_prefix = "D:\\"
-to_prefix = "E:\\"
-reason = "USB drive letter change"
+[[paths.search_roots]]
+path = "E:\\Dropbox"
+max_depth = 4
 ```
 
 ---
@@ -209,33 +217,66 @@ reason = "USB drive letter change"
 ## Running the System
 
 ```bash
-# Analyze collection
-python src/cli.py stats
+# Generate preview (all missing + duplicates)
+python src/cli.py preview --remove-self-matches
 
-# Find tracks
-python src/cli.py list "drum and bass 170-180"
+# Preview with filters
+python src/cli.py preview --missing --duplicates --remove-self-matches
+
+# List tracks
+python src/cli.py list "min 3:00 max 10:00"
 python src/cli.py find "Au5"
-python src/cli.py list "min 3:00"          # tracks over 3 min
-python src/cli.py list "max 1:00"         # tracks under 1 min (samples)
 
-# Find duplicates and generate cleanup patch
-python src/cli.py duplicates -n 20 -p cleaned.nml
+# Find duplicates
+python src/cli.py duplicates
 
-# BPM analysis (requires accessible file paths)
-python src/cli.py analyze --limit 20
+# MusicBrainz lookup
+python src/cli.py lookup "Artist - Title"
 
-# MusicBrainz metadata lookup
-python src/cli.py lookup -n 20
-
-# Missing file detection
-python src/cli.py config init              # set up config first
-python src/cli.py missing --limit 20
-
-# HTML preview and apply
-python src/cli.py preview --missing --duplicates -o preview.html
-python src/cli.py apply selection.json --dry-run
-python src/cli.py apply selection.json
+# Apply changes (after exporting from preview)
+python src/cli.py apply traktor-tools/selections/selection_2026-04-28.json
 
 # Help
-python src/cli.py help
+python src/cli.py --help
 ```
+
+---
+
+## Next Steps / TODO
+
+### High Priority
+
+1. **Fuzzy title matching** - Use title similarity to match "02 Bloodline.mp3" → "Northlane - Bloodline.mp3"
+   - Track has FILE="02 Bloodline.mp3" in NML but actual file is "Northlane - Bloodline.mp3" on disk
+   - Search by just "Bloodline.mp3" finds it, but filename mismatch causes MISSING status
+   - Could use artist+title similarity from NML metadata to cross-reference
+
+2. **Size-based auto-selection** - When original exists and has size, prefer found files with matching size
+   - Infrastructure ready: `found_sizes` field exists, `_matches_by_size()` function exists
+   - Currently only filters when `original_size` exists and multiple found files have sizes
+   - Would help pick correct version when multiple matches exist
+
+3. **End-to-end test** - Full workflow: preview → select → export → apply
+   - Regenerate preview
+   - Make selections in browser
+   - Export and apply to collection
+   - Verify Traktor loads the modified collection
+
+### Medium Priority
+
+4. **Network drive consideration** - Could search network drives selectively (e.g., only specific folders on Z:)
+   - Z: drive has ~172 tracks pointing to files like "02 Bloodline.mp3"
+   - These files likely migrated to E:spotdl with full artist prefixed names
+   - Could scan specific folders rather than entire drive
+
+5. **Backup management** - Auto-cleanup of backups older than N days
+   - Currently backups accumulate indefinitely
+
+6. **Natural language queries** - "show me all tracks over 170 BPM"
+   - Query engine already supports BPM ranges, just needs NL wrapper
+
+### Lower Priority
+
+7. **Beatport/SoundCloud discovery**
+8. **Album art fetch**
+9. **Web UI** (if HTML preview insufficient)

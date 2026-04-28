@@ -33,8 +33,11 @@ class Track:
 
     @property
     def full_path(self) -> str:
-        parts = [p for p in [self.volume, self.file_path] if p]
-        return "/".join(parts).replace("//", "/")
+        if self.volume and self.file_path:
+            if self.file_path.startswith("\\"):
+                return self.volume + self.file_path
+            return self.volume + "\\" + self.file_path
+        return self.file_path or ""
 
 
 @dataclass
@@ -91,8 +94,14 @@ class NMLParser:
             volume_id = ""
             if location is not None:
                 file_path = location.get("FILE", "")
+                dir_raw = location.get("DIR", "")
                 volume = location.get("VOLUME", "")
                 volume_id = location.get("VOLUMEID", "")
+
+                if dir_raw:
+                    parts = dir_raw.split("/:")
+                    dir_parts = [p for p in parts if p]
+                    file_path = "\\".join(dir_parts) + "\\" + file_path if dir_parts else file_path
 
             album_el = entry_el.find("ALBUM")
             album = album_el.get("TITLE", "") if album_el is not None else ""

@@ -65,6 +65,7 @@ def serialize_missing_info(info: MissingFileInfo) -> dict:
         "original_path": info.original_path,
         "status": info.status,
         "found_paths": info.found_paths,
+        "found_sizes": info.found_sizes,
         "full_path": info.full_path,
     }
 
@@ -94,10 +95,26 @@ def generate_preview_html(
     missing_serialized = [serialize_missing_info(m) for m in missing]
     duplicates_serialized = [serialize_duplicate_group(g, i) for i, g in enumerate(duplicates)]
 
+    # Calculate stats
+    missing_count = len(missing)
+    missing_found = sum(1 for m in missing if m.status in ('found_single', 'found_multiple'))
+    missing_truly_missing = sum(1 for m in missing if m.status == 'missing')
+    duplicate_groups = len(duplicates)
+    total_tracks_affected = sum(len(g.tracks) for g in duplicates)
+
+    stats = {
+        "total_missing": missing_count,
+        "missing_found": missing_found,
+        "missing_not_found": missing_truly_missing,
+        "duplicate_groups": duplicate_groups,
+        "tracks_in_duplicates": total_tracks_affected,
+    }
+
     data_json = json.dumps({
         "missing": missing_serialized,
         "duplicates": duplicates_serialized,
         "generated_at": timestamp,
+        "stats": stats,
     }, indent=2)
 
     timestamp_escaped = escape_html(timestamp)
@@ -154,6 +171,90 @@ def generate_preview_html(
             font-weight: 600;
             margin-bottom: 16px;
             color: var(--accent);
+        }
+
+        .header-title span {
+            color: var(--text-secondary);
+            font-weight: normal;
+            font-size: 14px;
+        }
+
+        .info-section {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .info-block {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .info-block h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-block p {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .info-block code {
+            background: var(--bg-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+
+        .legend-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .legend-icon.missing {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+        }
+
+        .legend-icon.duplicate {
+            background: rgba(255, 107, 53, 0.2);
+            color: var(--accent);
+        }
+
+        .legend-icon.mix {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--warning);
+            border-left: 3px solid var(--warning);
         }
 
         .filter-bar {
@@ -402,6 +503,10 @@ def generate_preview_html(
             word-break: break-all;
         }
 
+        .found-path.original {
+            color: var(--danger);
+        }
+
         .selection-bar {
             background: var(--bg-secondary);
             border-top: 1px solid var(--border);
@@ -510,7 +615,26 @@ def generate_preview_html(
 </head>
 <body>
     <header>
-        <div class="header-title">Traktor Collection Preview</div>
+        <div class="header-title">Traktor Collection Preview <span id="generatedAt"></span></div>
+
+        <div class="info-section">
+            <div class="info-block">
+                <h3>What is this?</h3>
+                <p>This page shows tracks that need attention. Select items to mark them for action, then export your selections.</p>
+                <div class="legend">
+                    <div class="legend-item"><span class="legend-icon missing">!</span> Missing file (not found)</div>
+                    <div class="legend-item"><span class="legend-icon duplicate">D</span> Duplicate track group</div>
+                    <div class="legend-item"><span class="legend-icon mix">!</span> Likely mix (>10min)</div>
+                </div>
+            </div>
+            <div class="info-block">
+                <h3>How to use</h3>
+                <p><strong>Click</strong> to select | <strong>Shift+click</strong> for range | <strong>Ctrl+click</strong> for multi-select</p>
+                <p>For duplicates: use radio buttons to pick which version to keep.</p>
+                <p>When done: <code>python src/cli.py apply selection.json</code></p>
+            </div>
+        </div>
+
         <div class="filter-bar">
             <div class="filter-group">
                 <input type="text" id="searchInput" class="search-input" placeholder="Search artist or title...">
@@ -583,7 +707,7 @@ def generate_preview_html(
     </div>
 
     <footer>
-        Generated: <span id="generatedAt">__TIMESTAMP__</span>
+        <span id="statsSummary"></span>
     </footer>
 
     <script>
@@ -740,8 +864,15 @@ def generate_preview_html(
         }
 
         let foundPath = '';
-        if (m.found_paths && m.found_paths.length > 0) {
-            foundPath = '<div class="found-path">Found: ' + escapeHtml(m.found_paths[0]) + '</div>';
+        if (m.status === 'missing') {
+            foundPath = '<div class="found-path original">Expected: ' + escapeHtml(m.original_path) + '</div>';
+        } else if (m.found_paths && m.found_paths.length > 0) {
+            let sizeStr = '';
+            if (m.found_sizes && m.found_sizes[0]) {
+                const sizeKB = Math.round(m.found_sizes[0] / 1024);
+                sizeStr = ' (' + sizeKB + ' KB)';
+            }
+            foundPath = '<div class="found-path">Found: ' + escapeHtml(m.found_paths[0]) + sizeStr + '</div>';
         }
 
         return '<tr class="' + rowClass + '" data-id="' + id + '" data-type="missing" data-index="' + m._index + '">' +
@@ -974,13 +1105,9 @@ def generate_preview_html(
         document.getElementById('selectionCount').textContent = state.selectedIds.size;
 
         const hasSelection = state.selectedIds.size > 0;
-        const hasFound = Array.from(state.selectedIds).some(id => {
-            if (id.startsWith('missing_')) {
-                const m = APP_DATA.missing.find(x => 'missing_' + x.track.audio_id === id);
-                return m && (m.status === 'found_single' || m.status === 'found_multiple');
-            }
-            return false;
-        });
+        const hasFound = APP_DATA.missing.some(m =>
+            m.status === 'found_single' || m.status === 'found_multiple'
+        );
 
         document.getElementById('acceptAllFound').disabled = !hasFound;
         document.getElementById('ignoreAll').disabled = !hasSelection;
@@ -1003,15 +1130,16 @@ def generate_preview_html(
     }
 
     function acceptAllFound() {
-        for (const id of state.selectedIds) {
-            if (id.startsWith('missing_')) {
-                const m = APP_DATA.missing.find(x => 'missing_' + x.track.audio_id === id);
-                if (m && (m.status === 'found_single' || m.status === 'found_multiple')) {
-                    m._action = 'rebase';
-                    m._selected_path = m.found_paths && m.found_paths[0] ? m.found_paths[0] : null;
-                }
-            }
+        const foundItems = APP_DATA.missing.filter(m =>
+            m.status === 'found_single' || m.status === 'found_multiple'
+        );
+        for (const m of foundItems) {
+            const id = 'missing_' + m.track.audio_id;
+            state.selectedIds.add(id);
+            m._action = 'rebase';
+            m._selected_path = m.found_paths && m.found_paths[0] ? m.found_paths[0] : null;
         }
+        saveSelection();
         render();
     }
 
@@ -1154,6 +1282,27 @@ def generate_preview_html(
     document.addEventListener('DOMContentLoaded', () => {
         loadSelection();
         bindFilterEvents();
+
+        // Populate timestamp and stats
+        const generatedAt = document.getElementById('generatedAt');
+        if (generatedAt && APP_DATA.generated_at) {
+            const date = new Date(APP_DATA.generated_at);
+            generatedAt.textContent = '— Generated ' + date.toLocaleString();
+        }
+
+        const statsSummary = document.getElementById('statsSummary');
+        if (statsSummary && APP_DATA.stats) {
+            const s = APP_DATA.stats;
+            const parts = [];
+            if (s.total_missing !== undefined) {
+                parts.push(s.total_missing + ' missing (' + s.missing_found + ' found, ' + s.missing_not_found + ' not found)');
+            }
+            if (s.duplicate_groups !== undefined) {
+                parts.push(s.duplicate_groups + ' duplicate groups (' + s.tracks_in_duplicates + ' tracks)');
+            }
+            statsSummary.textContent = parts.join(' | ');
+        }
+
         render();
     });
     </script>
