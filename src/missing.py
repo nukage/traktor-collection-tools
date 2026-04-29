@@ -16,8 +16,6 @@ MISSING_CATEGORIES = ["all", "missing", "found_single", "found_multiple", "netwo
 SEARCH_TIMEOUT_PER_FILE = 30  # seconds per file search
 EXISTS_TIMEOUT = 5  # seconds for existence check
 
-SIZE_TOLERANCE = 0.02  # 2% size difference tolerance for match
-
 
 @dataclass
 class MissingFileInfo:
@@ -154,13 +152,12 @@ def _search_for_file(filename: str, search_root: SearchRoot, timeout: int = SEAR
 
 
 def _matches_by_size(original_size: Optional[int], found_size: Optional[int]) -> bool:
-    """Check if sizes match within tolerance."""
+    """Check if sizes match exactly (no tolerance)."""
     if original_size is None or found_size is None:
         return False
     if original_size == 0:
         return False
-    diff = abs(original_size - found_size) / original_size
-    return diff <= SIZE_TOLERANCE
+    return original_size == found_size
 
 
 def find_missing_files(tracks: list[Track], config: Config) -> list[MissingFileInfo]:

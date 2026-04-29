@@ -1183,11 +1183,6 @@ def generate_preview_html(
                         } else if (m.found_paths && m.found_paths[0]) {
                             entry.new_path = m.found_paths[0];
                         }
-                    } else if (m._action === 'ignore') {
-                        entry.action = 'ignore';
-                    } else if (m.status === 'found_single' || m.status === 'found_multiple') {
-                        entry.action = 'rebase';
-                        entry.new_path = m.found_paths && m.found_paths[0] ? m.found_paths[0] : undefined;
                     } else {
                         entry.action = 'ignore';
                     }

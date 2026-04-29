@@ -125,8 +125,11 @@ def apply_selection(
                 location = entry.find("LOCATION")
                 if location is not None:
                     if not dry_run:
-                        location.set("FILE", file_path)
+                        file_parts = file_path.replace("/", "\\").split("\\")
+                        nml_dir = "/:" + "/:".join(file_parts[:-1]) + "/:" if len(file_parts) > 1 else "/:"
+                        location.set("FILE", file_parts[-1])
                         location.set("VOLUME", volume)
+                        location.set("DIR", nml_dir)
                         location.set("VOLUMEID", "")
                     stats["rebased"] += 1
 
@@ -172,14 +175,29 @@ def apply_selection(
             continue
 
         elif action == "merge":
-            # Determine winner
-            if winner_id and winner_id in [t.audio_id for t in group.tracks]:
+            # Find the group containing winner_id - this is more robust than using group_id
+            # because rebuilt groups may have different indices with minimal Track objects
+            target_group = None
+            if winner_id and winner_id in audio_id_to_entry:
                 actual_winner = winner_id
+                for g in duplicate_groups:
+                    if any(t.audio_id == winner_id for t in g.tracks):
+                        target_group = g
+                        break
+            elif group.winner and group.winner.audio_id in audio_id_to_entry:
+                actual_winner = group.winner.audio_id
+                target_group = group
+            elif group.tracks and group.tracks[0].audio_id in audio_id_to_entry:
+                actual_winner = group.tracks[0].audio_id
+                target_group = group
             else:
-                actual_winner = group.winner.audio_id if group.winner else group.tracks[0].audio_id
+                continue
 
-            # Remove all non-winners
-            for track in group.tracks:
+            if target_group is None:
+                continue
+
+            # Remove all non-winners from target group
+            for track in target_group.tracks:
                 if track.audio_id != actual_winner and track.audio_id in audio_id_to_entry:
                     if not dry_run:
                         collection.remove(audio_id_to_entry[track.audio_id])

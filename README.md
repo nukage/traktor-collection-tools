@@ -56,6 +56,20 @@ python src/cli.py duplicates -n 20 -p cleaned.nml  # generate NML patch
 | `analyze` | BPM detection for tracks missing it | `analyze --limit 20` |
 | `duplicates` | Find and merge duplicate tracks | `duplicates -n 20 -p cleaned.nml` |
 | `export` | Export playlist to M3U/NML/TXT | `export set.m3u "techno 130-145"` |
+| `missing` | Find missing files using Everything | `missing --limit 20` |
+| `preview` | Generate HTML preview for selection | `preview --remove-self-matches` |
+| `apply` | Apply selection changes to collection | `apply selections/2026-04-28.json` |
+| `lookup` | MusicBrainz metadata lookup | `lookup -n 20` |
+
+## Missing File Scanner
+
+The system can find missing files using the Everything HTTP API (Windows):
+
+```bash
+python src/cli.py preview --remove-self-matches
+# Opens preview - select items, export, then apply
+python src/cli.py apply traktor-tools/selections/selection_2026-04-28.json
+```
 
 ## NML File Location
 
@@ -67,6 +81,32 @@ Specify with `--nml` flag:
 ```bash
 python src/cli.py list --nml "\\UNRAIDTOWER\Storage\Temp\collection.nml" "drum and bass"
 ```
+
+Note: Commands default to config.toml path. Use `--nml` to override.
+
+## Apply Changes Workflow
+
+The apply workflow allows you to fix missing files by rebasing paths to found locations:
+
+1. **Generate preview:**
+   ```bash
+   python src/cli.py preview --remove-self-matches
+   ```
+
+2. **Open preview in browser** (http://localhost:8765) and select items
+
+3. **Export selections** from the preview UI
+
+4. **Apply changes:**
+   ```bash
+   python src/cli.py apply traktor-tools/selections/selection_YYYY-MM-DD.json --nml "C:\path\to\collection.nml"
+   ```
+
+This will:
+- Create a backup of the collection
+- Update file paths (rebase) for selected items
+- Remove duplicate entries (merge)
+- Keep collection valid for Traktor
 
 ## Duplicate Detection
 

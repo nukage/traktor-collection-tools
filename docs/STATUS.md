@@ -70,16 +70,17 @@ config <show|init|validate>  # Config file management
 
 ---
 
-## Current Stats (Collection Scan)
+## Current Stats (Collection Scan - Updated 2026-04-28)
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| found_single | ~4020 | File exists at original path |
-| found_multiple | ~182 | File found but in multiple locations |
-| missing | ~151 | File not found anywhere |
-| network_offline | ~172 | File on Z: network drive (not searched) |
+| found_single | ~214 | File found at alternative path |
+| found_multiple | ~186 | File found in multiple locations |
+| missing | ~300 | File not found (no results) |
+| network_offline | ~23 | File on Y: drive (disconnected) |
+| duplicates | ~469 | Duplicate groups (~1085 tracks) |
 
-**Total tracks in collection**: 4525
+**Total tracks in collection**: 5153 (before dedupe)
 
 ---
 
@@ -157,12 +158,26 @@ The preview server (MCP browser) occasionally disconnects. Workaround: regenerat
 
 | Date | Issue | Fix |
 |------|--------|-----|
+| 2026-04-28 | Apply dedupe uses wrong group | Use winner_id to find group instead of group_id index |
+| 2026-04-28 | Apply rebase doesn't set DIR | Now properly sets DIR when rebasing paths |
+| 2026-04-28 | preview.py exports "rebase" for manually selected found items | Changed to "ignore" action for found items |
 | 2026-04-28 | Everything `file:1` filter causing 0 results | Removed `file:1` from search query |
 | 2026-04-28 | Size parsing regex too strict | Changed from exact span match to permissive `.*?` |
 | 2026-04-28 | E: drive misclassified as network | Only Y: and Z: treated as network drives |
 | 2026-04-28 | Self-matches not filtered | Added `--remove-self-matches` flag |
-| 2026-04-28 | NML DIR attribute ignored | Fixed path construction from DIR + FILE |
 | 2026-04-27 | Found paths shown as MISSING | Parser fix - full_path now uses backslashes |
+
+---
+
+## Test Results (2026-04-28)
+
+All 6 tests PASSED:
+- Ignore action: Exports "ignore" and apply makes no changes
+- Keep_both: Preserves both duplicate entries
+- Combined apply: Both rebase + dedupe work in single apply
+- Backup restore: Creates backup, restore produces identical result
+- Dry-run: Does not modify collection
+- Stats after apply: Track count correctly reflects removals
 
 ---
 
@@ -246,37 +261,35 @@ python src/cli.py --help
 
 ### High Priority
 
-1. **Fuzzy title matching** - Use title similarity to match "02 Bloodline.mp3" → "Northlane - Bloodline.mp3"
+1. ~~**End-to-end test** - Full workflow: preview → select → export → apply** ✅ DONE**
+2. **Fuzzy title matching** - Use title similarity to match "02 Bloodline.mp3" → "Northlane - Bloodline.mp3"
    - Track has FILE="02 Bloodline.mp3" in NML but actual file is "Northlane - Bloodline.mp3" on disk
    - Search by just "Bloodline.mp3" finds it, but filename mismatch causes MISSING status
    - Could use artist+title similarity from NML metadata to cross-reference
 
-2. **Size-based auto-selection** - When original exists and has size, prefer found files with matching size
+3. **Size-based auto-selection** - When original exists and has size, prefer found files with matching size
    - Infrastructure ready: `found_sizes` field exists, `_matches_by_size()` function exists
    - Currently only filters when `original_size` exists and multiple found files have sizes
    - Would help pick correct version when multiple matches exist
 
-3. **End-to-end test** - Full workflow: preview → select → export → apply
-   - Regenerate preview
-   - Make selections in browser
-   - Export and apply to collection
-   - Verify Traktor loads the modified collection
-
 ### Medium Priority
 
-4. **Network drive consideration** - Could search network drives selectively (e.g., only specific folders on Z:)
+4. **CLI default path fix** - Commands should use config.toml's `traktor_nml` by default, not UNRAID path
+   - Currently requires explicit `--nml` flag
+
+5. **Network drive consideration** - Could search network drives selectively (e.g., only specific folders on Z:)
    - Z: drive has ~172 tracks pointing to files like "02 Bloodline.mp3"
    - These files likely migrated to E:spotdl with full artist prefixed names
    - Could scan specific folders rather than entire drive
 
-5. **Backup management** - Auto-cleanup of backups older than N days
+6. **Backup management** - Auto-cleanup of backups older than N days
    - Currently backups accumulate indefinitely
 
-6. **Natural language queries** - "show me all tracks over 170 BPM"
+7. **Natural language queries** - "show me all tracks over 170 BPM"
    - Query engine already supports BPM ranges, just needs NL wrapper
 
 ### Lower Priority
 
-7. **Beatport/SoundCloud discovery**
-8. **Album art fetch**
-9. **Web UI** (if HTML preview insufficient)
+8. ~~**Beatport/SoundCloud discovery**~~
+9. ~~**Album art fetch**~~
+10. ~~**Web UI** (if HTML preview insufficient)~~

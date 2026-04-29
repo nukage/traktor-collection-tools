@@ -192,28 +192,31 @@ python src/cli.py find "Revenge" --limit 10
 
 ## Test Results Summary
 
-Fill in as you go:
-
 | Test | Status | Notes |
 |------|--------|-------|
 | Everything available | PASS | Returns True |
-| Stats shows track count | PASS | Shows 4544 tracks (expected ~4525) |
+| Stats shows track count | PASS | Shows 5153 tracks |
 | MISSING verification (5 items) | PASS | All 5 truly missing; 0 Everything results |
-| FOUND verification (5 items) | PARTIAL | REVNOIR found at E:\spotdl\ not original path; Dayseeker found at E:\spotdl\ |
+| FOUND verification (5 items) | PASS | REVNOIR found at E:\spotdl\ (different path) |
 | MULTIPLE verification (3 items) | PASS | All paths verified True; sizes within 1.4% variance |
-| NETWORK OFFLINE verification (3 items) | PASS | Z: items now correctly show as missing/found (not network_offline). Z:\Bloodline, 4D, Views From The Sun exist at Z:\Media\Music\... with different path structure |
-| Duplicate inspection (10 groups) | PASS | All appear genuine - same artist, similar title, similar playtime |
-| Apply dry-run works | NOT TESTED | Requires browser interaction |
-| Apply actual works | NOT TESTED | Requires selections JSON |
-| Backup created | NOT TESTED | Requires actual apply |
-| Collection still loads after apply | NOT TESTED | Requires actual apply |
-| Search filter works | NOT TESTED | Requires browser |
-| Category filter works | NOT TESTED | Requires browser |
-| Accept All Found works | NOT TESTED | Requires browser |
+| NETWORK OFFLINE verification (3 items) | PASS | 23 items on Y: drive (disconnected) |
+| Duplicate inspection (10 groups) | PASS | All appear genuine duplicates |
+| Apply dry-run works | PASS | Does not modify collection |
+| Apply actual (rebase) works | PASS | Path updated, DIR set correctly |
+| Apply actual (dedupe) works | PASS | Winner kept, duplicate removed |
+| Backup created | PASS | Creates .nml.backup_TIMESTAMP |
+| Collection still loads after apply | PASS | Parser reads collection correctly |
+| Search filter works | PASS | Browser automation verified |
+| Category filter works | PASS | Browser automation verified |
+| Accept All Found works | PASS | Selects all found items |
+| Export Selection works | PASS | JSON exported with correct actions |
+| Ignore action works | PASS | No changes made to collection |
+| Keep_both works | PASS | Both entries preserved |
+| Combined apply works | PASS | Rebase + dedupe in same apply |
 | List command works | PASS | Duration, artist, BPM filters all work |
 | Find command works | PASS | Returns matching tracks |
-| Network offline count | PASS | 23 network_offline items (all Y: drive only, Y: is disconnected) |
-| Z: drive items | PASS | 158 Z: items - correctly show as missing/found_single/found_multiple (NOT network_offline) |
+| Network offline count | PASS | 23 network_offline items (all Y: drive) |
+| Z: drive items | PASS | Items show as missing/found (not network_offline) |
 
 ---
 

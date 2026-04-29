@@ -20,7 +20,45 @@ Before stopping, report:
 - result
 - remaining blocker (if any)
 
+## No Premature Choice Requests
 
+If the agent can make a reasonable engineering decision from local evidence, it must decide and continue.
+
+Asking the user is not a substitute for ranking tradeoffs.
+
+The agent should only escalate decisions that require owner intent, not ordinary implementation judgment
+
+## Decision Policy
+
+Do not stop to ask the user to choose between options unless the choice changes product intent, visual direction, data model, public API, or destructive behavior.
+
+If one option is clearly better, choose it and implement it.
+
+If options are equivalent, choose the smallest reversible change.
+
+If uncertain, rank options using this order:
+
+1. Preserves existing behavior
+2. Smallest code change
+3. Easiest to test
+4. Least coupling
+5. Most consistent with nearby code
+6. Most reversible
+
+Only ask the user when:
+- the decision affects UX/content/product meaning
+- the fix may remove user data
+- the change creates a new dependency
+- the change changes architecture
+- both options have real tradeoffs and no local evidence resolves them
+
+Forbidden pattern:
+
+> I found two possible fixes. Which should I use?
+
+Required pattern:
+
+> I found two possible fixes. Option 1 is safer because [reason]. I’m implementing it now and will verify.
 
 
 ---
@@ -227,25 +265,34 @@ Allowed blocker format:
 **Goal:** CLI-first + HTML preview tools for curating Traktor DJ collection.
 
 **Working features:**
-- NML parser (4525 tracks)
+- NML parser (5153 tracks)
 - Missing file scanner with Everything HTTP API integration
 - HTML preview generator with interactive selection
-- Apply changes with backup
-- Duplicate detection
+- Apply changes with backup (rebase, dedupe, ignore)
+- Duplicate detection with winner selection
+- MusicBrainz metadata lookup
+- Full end-to-end testing completed (2026-04-28)
 
 **Key files:**
 - `src/missing.py` - Missing file scanner, Everything integration
-- `src/preview.py` - HTML preview generator
+- `src/preview.py` - HTML preview generator, selection UI
 - `src/everything.py` - Everything HTTP API client
+- `src/apply.py` - Apply selection with rebase/dedupe/ignore
+- `src/duplicates.py` - Duplicate detection and merging
 - `traktor-tools/config.toml` - Config with search roots
 
+**Recent bug fixes:**
+- Apply rebase now sets DIR attribute correctly
+- Apply dedupe uses winner_id to find group (not group_id index)
+- preview.py exports "ignore" for manually selected found items
+
 **Known issues:**
-- Browser connection flaky (workaround: use direct HTTP URL)
-- Short titles like "4D" can match multiple files
-- Network drives (Y:, Z:) not searched
+- CLI commands default to UNRAID path, must use `--nml` flag for local collection
+- UI doesn't expose "keep_both" action directly
 
 **Commands:**
 ```bash
 python src/cli.py preview --remove-self-matches  # Generate preview
-python src/cli.py apply selections/...json        # Apply changes
+python src/cli.py apply selections/...json --nml "C:\path\to\collection.nml"  # Apply changes
+python src/cli.py stats --nml "C:\path\to\collection.nml"  # Collection stats
 ```
