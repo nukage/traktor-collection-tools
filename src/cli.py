@@ -19,6 +19,7 @@ from config import (
     load_config, init_default_config, validate_config,
     format_config, CONFIG_FILE, CONFIG_DIR
 )
+from query_parser import QueryParser
 
 
 def parse_bpm_range(query_str: str) -> tuple[Optional[float], Optional[float]]:
@@ -142,7 +143,16 @@ def parse_query(query_str: str) -> Query:
 
 def cmd_list(col: Collection, args: list[str]) -> list[Track]:
     query_str = " ".join(args)
-    q = parse_query(query_str)
+
+    nl_indicators = ['over', 'under', 'bpm', 'artist:', 'title:', 'min ', 'max ', 'from ', 'after ', 'before ', 'to ', '-', 'genre', 'drum', 'bass', 'house', 'techno', 'dubstep', ':']
+    is_nl = any(ind in query_str.lower() for ind in nl_indicators) or re.search(r'\d+:\d+', query_str)
+
+    if is_nl:
+        parser = QueryParser()
+        q = parser.parse(query_str)
+    else:
+        q = Query(title_contains=query_str, limit=50)
+
     return col.search(q)
 
 
