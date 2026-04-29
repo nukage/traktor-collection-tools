@@ -77,12 +77,11 @@ On Windows: `%APPDATA%\Native Instruments\Traktor\<version>\`
 
 Example network path: `\\UNRAIDTOWER\Storage\Temp\collection.nml`
 
-Specify with `--nml` flag:
+Commands default to config.toml path. Use `--nml` to override.
+
 ```bash
 python src/cli.py list --nml "\\UNRAIDTOWER\Storage\Temp\collection.nml" "drum and bass"
 ```
-
-Note: Commands default to config.toml path. Use `--nml` to override.
 
 ## Apply Changes Workflow
 

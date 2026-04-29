@@ -99,19 +99,7 @@ config <show|init|validate>  # Config file management
 
 ## Known Issues / Edge Cases ⚠️
 
-### 1. Filename Mismatches (Truly Missing)
-
-Some tracks are marked MISSING even though the file exists elsewhere with a different filename:
-
-**Example:**
-- NML entry: `FILE="02 Bloodline.mp3"` (no artist prefix)
-- Actual file: `E:\spotdl\Northlane - Bloodline.mp3` (artist prefix added)
-
-**Impact:** Searching for "02 Bloodline.mp3" → 0 results, but "Bloodline.mp3" finds it.
-
-**Severity:** Medium - These are genuinely different filenames, can't auto-match without fuzzy title matching.
-
-### 2. Ampersand vs Comma in Filenames
+### 1. Ampersand vs Comma in Filenames
 
 **Example:**
 - NML entry: `FILE="sace6 & Rain City Drive - easy exit.mp3"` → MISSING
@@ -148,9 +136,11 @@ The preview server (MCP browser) occasionally disconnects. Workaround: regenerat
 
 ## What's NOT Working ❌
 
-1. **Fuzzy title matching** - Can't match "02 Bloodline.mp3" to "Northlane - Bloodline.mp3"
-2. **Network drive search** - Y: and Z: are skipped entirely (too slow to scan)
-3. **Backup cleanup** - Old backups accumulate, no auto-cleanup of oldest backups
+1. ~~Fuzzy title matching~~ - ✅ DONE (2026-04-28)
+2. ~~Network drive search~~ - ✅ DONE (2026-04-28) - Selective folder scanning available
+3. ~~Backup cleanup~~ - ✅ DONE (2026-04-28)
+4. ~~Size-based auto-selection~~ - ✅ DONE (2026-04-28)
+5. ~~CLI default path fix~~ - ✅ DONE (2026-04-28)
 
 ---
 
@@ -166,6 +156,11 @@ The preview server (MCP browser) occasionally disconnects. Workaround: regenerat
 | 2026-04-28 | E: drive misclassified as network | Only Y: and Z: treated as network drives |
 | 2026-04-28 | Self-matches not filtered | Added `--remove-self-matches` flag |
 | 2026-04-27 | Found paths shown as MISSING | Parser fix - full_path now uses backslashes |
+| 2026-04-28 | **Fuzzy title matching** | Strip track number prefix for fuzzy filename search |
+| 2026-04-28 | **Size-based auto-selection** | ±2% tolerance, best_size_match_index tracking |
+| 2026-04-28 | **Network selective scan** | Config-based folder-level scanning for network drives |
+| 2026-04-28 | **Backup cleanup** | Auto-remove backups older than N days after apply |
+| 2026-04-28 | **CLI default path** | Use config.toml traktor_nml instead of hardcoded UNRAID path |
 
 ---
 
@@ -261,30 +256,15 @@ python src/cli.py --help
 
 ### High Priority
 
-1. ~~**End-to-end test** - Full workflow: preview → select → export → apply** ✅ DONE**
-2. **Fuzzy title matching** - Use title similarity to match "02 Bloodline.mp3" → "Northlane - Bloodline.mp3"
-   - Track has FILE="02 Bloodline.mp3" in NML but actual file is "Northlane - Bloodline.mp3" on disk
-   - Search by just "Bloodline.mp3" finds it, but filename mismatch causes MISSING status
-   - Could use artist+title similarity from NML metadata to cross-reference
-
-3. **Size-based auto-selection** - When original exists and has size, prefer found files with matching size
-   - Infrastructure ready: `found_sizes` field exists, `_matches_by_size()` function exists
-   - Currently only filters when `original_size` exists and multiple found files have sizes
-   - Would help pick correct version when multiple matches exist
+1. ~~**End-to-end test** - Full workflow: preview → select → export → apply** ✅ DONE~~
+2. ~~**Fuzzy title matching**~~ - ✅ DONE
+3. ~~**Size-based auto-selection**~~ - ✅ DONE
 
 ### Medium Priority
 
-4. **CLI default path fix** - Commands should use config.toml's `traktor_nml` by default, not UNRAID path
-   - Currently requires explicit `--nml` flag
-
-5. **Network drive consideration** - Could search network drives selectively (e.g., only specific folders on Z:)
-   - Z: drive has ~172 tracks pointing to files like "02 Bloodline.mp3"
-   - These files likely migrated to E:spotdl with full artist prefixed names
-   - Could scan specific folders rather than entire drive
-
-6. **Backup management** - Auto-cleanup of backups older than N days
-   - Currently backups accumulate indefinitely
-
+4. ~~**CLI default path fix**~~ - ✅ DONE
+5. ~~**Network drive consideration**~~ - ✅ DONE (selective folder scanning)
+6. ~~**Backup management**~~ - ✅ DONE (auto-cleanup with config)
 7. **Natural language queries** - "show me all tracks over 170 BPM"
    - Query engine already supports BPM ranges, just needs NL wrapper
 
