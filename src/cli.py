@@ -563,17 +563,35 @@ def cmd_config(args: list[str]) -> None:
         print("Usage: config <show|init|validate>")
 
 
+def _get_default_nml():
+    """Get default NML path from config."""
+    try:
+        cfg = load_config()
+        if cfg.traktor_nml:
+            return cfg.traktor_nml
+    except (FileNotFoundError, Exception):
+        pass
+    return str(Path.home() / "Documents" / "Native Instruments" / "Traktor 4.1.0" / "collection.nml")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Traktor Collection Query CLI")
     parser.add_argument("command", nargs="?", default="list")
     parser.add_argument("args", nargs="*", default=[])
-    parser.add_argument("--nml", default=r"\\UNRAIDTOWER\Storage\Temp\collection.nml",
-                        help="Path to NML collection file")
+    parser.add_argument("--nml", default=None,
+                        help="Path to NML collection file (default: from config.toml)")
     parser.add_argument("--limit", "-n", type=int, default=20)
 
     args, unknown = parser.parse_known_args()
     if unknown:
         args.args = unknown + args.args
+
+    nml_path = args.nml if args.nml else _get_default_nml()
+    try:
+        col = load_collection(nml_path)
+    except Exception as e:
+        print(f"Error loading collection: {e}")
+        return
 
     if args.command == "help":
         print("Available commands:")
@@ -601,13 +619,6 @@ def main():
         print("  duplicates -n 20 -p cleaned.nml  # generate NML patch file")
         print("  preview --missing --duplicates -o preview.html  # generate preview")
         print("  apply selection.json --dry-run  # preview changes without applying")
-        return
-
-    nml_path = args.nml
-    try:
-        col = load_collection(nml_path)
-    except Exception as e:
-        print(f"Error loading collection: {e}")
         return
 
     if args.command == "duplicates" or args.command == "dup":
