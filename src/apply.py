@@ -57,12 +57,32 @@ def split_path_for_nml(full_path: str) -> tuple[str, str]:
     return "", full_path
 
 
+def cleanup_old_backups(nml_path: str, keep_days: int = 30) -> int:
+    """Remove backup files older than keep_days. Returns count of backups removed."""
+    backup_dir = Path(nml_path).parent
+    backup_pattern = f"{Path(nml_path).name}.backup_*"
+    removed = 0
+    cutoff = datetime.now() - timedelta(days=keep_days)
+
+    for backup in backup_dir.glob(backup_pattern):
+        try:
+            if backup.stat().st_mtime < cutoff.timestamp():
+                backup.unlink()
+                removed += 1
+        except OSError:
+            pass
+
+    return removed
+
+
 def apply_selection(
     nml_path: str,
     selection: SelectionData,
     track_lookup: dict = None,
     backup: bool = True,
-    dry_run: bool = False
+    dry_run: bool = False,
+    cleanup_backups: bool = True,
+    backup_retention_days: int = 30
 ) -> dict:
     """Apply selection to NML file.
 
@@ -86,6 +106,11 @@ def apply_selection(
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"{nml_path}.backup_{timestamp}"
         shutil.copy2(nml_path, backup_path)
+
+    if cleanup_backups and backup and not dry_run:
+        removed = cleanup_old_backups(nml_path, backup_retention_days)
+        if removed > 0:
+            print(f"Cleaned up {removed} old backup(s)")
 
     tree = ET.parse(nml_path)
     root = tree.getroot()

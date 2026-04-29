@@ -481,12 +481,20 @@ def cmd_apply(col: Collection, args: list[str], nml_path: str = None, outer_args
     parser = argparse.ArgumentParser()
     parser.add_argument("selection_file", help="Selection JSON file from preview export")
     parser.add_argument("--no-backup", action="store_true", help="Skip backup")
+    parser.add_argument("--no-cleanup", action="store_true", help="Skip old backup cleanup")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without applying")
     parsed, unknown = parser.parse_known_args(args)
 
     selection = load_selection(parsed.selection_file)
 
-    result = apply_selection(nml_path, selection, backup=not parsed.no_backup, dry_run=parsed.dry_run)
+    config = load_config()
+    result = apply_selection(
+        nml_path, selection,
+        backup=not parsed.no_backup,
+        dry_run=parsed.dry_run,
+        cleanup_backups=not parsed.no_cleanup,
+        backup_retention_days=config.backup_retention_days
+    )
 
     print(f"Applied changes:")
     print(f"  Tracks removed: {result.get('removed', 0)}")

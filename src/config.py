@@ -28,6 +28,8 @@ class Config:
     search_roots: list[SearchRoot] = field(default_factory=list)
     path_mappings: list[PathMapping] = field(default_factory=list)
     use_everything: bool = False
+    auto_cleanup_backups: bool = True
+    backup_retention_days: int = 30
 
 
 def get_default_config() -> Config:
@@ -59,6 +61,8 @@ def config_to_dict(cfg: Config) -> dict:
         ]
     if cfg.use_everything:
         result["use_everything"] = cfg.use_everything
+    result["auto_cleanup_backups"] = cfg.auto_cleanup_backups
+    result["backup_retention_days"] = cfg.backup_retention_days
     return result
 
 
@@ -88,6 +92,8 @@ def dict_to_config(d: dict) -> Config:
         search_roots=search_roots,
         path_mappings=path_mappings,
         use_everything=d.get("everything", {}).get("use_everything", False),
+        auto_cleanup_backups=d.get("apply", {}).get("auto_cleanup_backups", True),
+        backup_retention_days=d.get("apply", {}).get("backup_retention_days", 30),
     )
 
 
@@ -135,6 +141,11 @@ def save_config(cfg: Config, config_path: Path = None) -> None:
         lines.append("")
         lines.append("[everything]")
         lines.append(f"use_everything = {cfg.use_everything}")
+
+    lines.append("")
+    lines.append("[apply]")
+    lines.append(f"auto_cleanup_backups = {cfg.auto_cleanup_backups}")
+    lines.append(f"backup_retention_days = {cfg.backup_retention_days}")
 
     with open(config_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
