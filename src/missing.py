@@ -160,6 +160,79 @@ def _matches_by_size(original_size: Optional[int], found_size: Optional[int]) ->
     return original_size == found_size
 
 
+def _strip_track_number(title: str) -> str:
+    """Strip common track number patterns from title."""
+    import re
+    patterns = [
+        r'^\d{1,2}\s*[-_.:]\s*',
+        r'^\d{2}:\d{2}\s*-\s*',
+        r'^track\s*\d+\s*[-_.:]\s*',
+        r'^\d+\s+',
+    ]
+    result = title
+    for pattern in patterns:
+        result = re.sub(pattern, '', result, flags=re.IGNORECASE)
+    return result.strip()
+
+
+def fuzzy_match_filename(track: Track, search_roots: list[SearchRoot], timeout: int = 10) -> list[tuple[str, int]]:
+    """Try fuzzy matching when exact filename fails. Returns list of (path, size)."""
+    import re
+    filename = Path(track.file_path).name
+    name_without_ext = Path(track.file_path).stem
+    extension = Path(track.file_path).suffix
+
+    stripped_title = _strip_track_number(name_without_ext)
+    if stripped_title == name_without_ext:
+        return []
+
+    stripped_filename = stripped_title + extension
+
+    found = []
+    for sr in search_roots:
+        root_path = Path(sr.path)
+        if not root_path.exists() or _is_network_path(sr.path):
+            continue
+
+        def _search():
+            try:
+                for dirpath, dirnames, filenames in os.walk(root_path):
+                    try:
+                        rel_path = Path(dirpath).relative_to(root_path)
+                        depth = len(rel_path.parts)
+                        if depth > sr.max_depth:
+                            dirnames.clear()
+                            continue
+                    except ValueError:
+                        dirnames.clear()
+                        continue
+
+                    for fname in filenames:
+                        fname_lower = fname.lower()
+                        if fname_lower == stripped_filename.lower() or fname_lower == (stripped_title + ".*").lower():
+                            full_path = os.path.join(dirpath, fname)
+                            try:
+                                size = os.path.getsize(full_path)
+                                found.append((full_path, size))
+                            except OSError:
+                                found.append((full_path, 0))
+            except (OSError, PermissionError):
+                pass
+            except Exception:
+                pass
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_search)
+                future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            pass
+        except Exception:
+            pass
+
+    return found
+
+
 def find_missing_files(tracks: list[Track], config: Config) -> list[MissingFileInfo]:
     """Find missing files from track list and search for them."""
     results = []
@@ -202,6 +275,12 @@ def find_missing_files(tracks: list[Track], config: Config) -> list[MissingFileI
                     for path, size in matches:
                         found_paths.append(path)
                         found_sizes.append(size)
+
+            if not found_paths and not _is_network_path(full_path):
+                fuzzy_results = fuzzy_match_filename(track, config.search_roots)
+                for path, size in fuzzy_results:
+                    found_paths.append(path)
+                    found_sizes.append(size)
 
             if len(found_paths) > 1 and original_size:
                 filtered_paths = []
