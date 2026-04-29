@@ -53,12 +53,12 @@ class QueryParser:
             q.bpm_max = float(ceil_match.group(1))
             return
 
-        min_match = re.search(r'min\s+(\d+(?:\.\d+)?)\s*(?:bpm)?', s_lower)
+        min_match = re.search(r'min\s+(\d+(?:\.\d+)?)(?!:)', s_lower)
         if min_match:
             q.bpm_min = float(min_match.group(1))
             return
 
-        max_match = re.search(r'max\s+(\d+(?:\.\d+)?)\s*(?:bpm)?', s_lower)
+        max_match = re.search(r'max\s+(\d+(?:\.\d+)?)(?!:)', s_lower)
         if max_match:
             q.bpm_max = float(max_match.group(1))
             return
