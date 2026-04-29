@@ -127,24 +127,24 @@ class QueryParser:
             return
 
     def _parse_artist(self, s: str, q: Query) -> None:
-        match = re.search(r'artist:\s*(.+?)(?:\s+from\s|\s+in\s|\s+with\s|$)', s, re.IGNORECASE)
+        match = re.search(r'artist:\s*(.+?)(?:\s+(?:from|in|with|min|max|to|after|before)\s+|$)', s, re.IGNORECASE)
         if match:
             q.artist = match.group(1).strip()
             return
 
-        match = re.search(r'by\s+([A-Za-z0-9\s]+?)(?:\s+from\s|\s+in\s|\s+with\s|$)', s, re.IGNORECASE)
+        match = re.search(r'by\s+([A-Za-z0-9\s]+?)(?:\s+(?:from|in|with|min|max|to|after|before)\s+|$)', s, re.IGNORECASE)
         if match:
             artist = match.group(1).strip()
             if len(artist) > 1:
                 q.artist = artist
 
     def _parse_title(self, s: str, q: Query) -> None:
-        match = re.search(r'title:\s*(.+?)(?:\s+from\s|\s+in\s|\s+with\s|$)', s, re.IGNORECASE)
+        match = re.search(r'title:\s*(.+?)(?:\s+(?:from|in|with|min|max|to|after|before)\s+|$)', s, re.IGNORECASE)
         if match:
             q.title_contains = match.group(1).strip()
             return
 
-        match = re.search(r'like\s+(.+?)(?:\s+but\s|\s+with\s|\s+from\s|$)', s, re.IGNORECASE)
+        match = re.search(r'like\s+(.+?)(?:\s+(?:but|with|from|in|min|max|to|after|before)\s+|$)', s, re.IGNORECASE)
         if match:
             q.title_contains = match.group(1).strip()
 

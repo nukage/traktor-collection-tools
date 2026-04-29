@@ -27,8 +27,13 @@ python src/cli.py help
 # Analyze collection stats
 python src/cli.py stats
 
+# Natural language queries
+python src/cli.py list "over 170 BPM"
+python src/cli.py list "drum & bass from 2019"
+python src/cli.py list "artist: Au5 min 3:00 max 10:00"
+python src/cli.py list "from 2019-2022 min 3:00"
+
 # Find tracks
-python src/cli.py list "drum and bass 170-180"
 python src/cli.py find "Au5"
 python src/cli.py similar "Interstellar"
 
@@ -47,7 +52,7 @@ python src/cli.py duplicates -n 20 -p cleaned.nml  # generate NML patch
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `list` | Search tracks by BPM, artist, year | `list drum and bass 170-180` |
+| `list` | Search tracks by natural language | `list "over 170 BPM"`, `list "drum & bass from 2019"` |
 | `find` | Find tracks by title | `find Au5` |
 | `similar` | Find tracks similar to given title | `similar Interstellar` |
 | `artists` | List all artists | `artists -n 30` |
@@ -60,6 +65,7 @@ python src/cli.py duplicates -n 20 -p cleaned.nml  # generate NML patch
 | `preview` | Generate HTML preview for selection | `preview --remove-self-matches` |
 | `apply` | Apply selection changes to collection | `apply selections/2026-04-28.json` |
 | `lookup` | MusicBrainz metadata lookup | `lookup -n 20` |
+| `config` | Config file management | `config show\|init\|validate` |
 
 ## Missing File Scanner
 
@@ -125,13 +131,17 @@ The system finds tracks that are the same song but imported multiple times:
 src/
   parser.py       - NML XML parser (Track, Cue dataclasses)
   query.py        - Collection search engine (Query filters, BPM/artist/album)
+  query_parser.py - Natural language query parser (QueryParser class)
   bpm_analyzer.py - librosa-based BPM detection from audio files
   duplicates.py   - Duplicate detection engine + NML patch generator
   cli.py          - All CLI commands
+tests/
+  test_query_parser.py - Unit tests for QueryParser
 ```
 
 ## Next Steps
 
-- MusicBrainz/Discogs API for metadata lookup
+- ~~MusicBrainz/Discogs API for metadata lookup~~ - ✅ DONE
+- Natural language query improvements
 - Web UI for visual collection management
 - Beatport/SoundCloud discovery agent

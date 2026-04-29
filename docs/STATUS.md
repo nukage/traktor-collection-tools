@@ -15,7 +15,8 @@
 | Missing File Scanner | `src/missing.py` | ✅ Working |
 | HTML Preview Generator | `src/preview.py` | ✅ Working |
 | Apply Changes | `src/apply.py` | ✅ Working |
-| Everything Integration | `src/everything.py` | ✅ Working |
+| MusicBrainz Lookup | `src/musicbrainz.py` | ✅ Working |
+| Natural Language Query Parser | `src/query_parser.py` | ✅ Working |
 
 ### CLI Commands
 
@@ -183,6 +184,7 @@ traktor-collection-tools/
 ├── src/
 │   ├── parser.py          # NML XML parser
 │   ├── query.py           # Collection search engine
+│   ├── query_parser.py   # Natural language query parser
 │   ├── duplicates.py      # Duplicate detection
 │   ├── missing.py         # Missing file scanner + Everything integration
 │   ├── preview.py         # HTML preview generator
@@ -191,12 +193,16 @@ traktor-collection-tools/
 │   ├── config.py         # TOML config system
 │   ├── cli.py             # CLI commands
 │   └── musicbrainz.py    # MusicBrainz API
+├── tests/
+│   ├── __init__.py
+│   └── test_query_parser.py  # QueryParser unit tests
 ├── traktor-tools/
 │   ├── config.toml        # Config file
 │   ├── previews/          # HTML preview files
 │   └── selections/        # Selection JSON files
 ├── docs/
 │   ├── SPEC.md
+│   ├── NL_QUERY_PLAN.md   # Natural language query spec
 │   ├── BUILD_PLAN.md
 │   └── STATUS.md
 └── README.md
@@ -265,8 +271,8 @@ python src/cli.py --help
 4. ~~**CLI default path fix**~~ - ✅ DONE
 5. ~~**Network drive consideration**~~ - ✅ DONE (selective folder scanning)
 6. ~~**Backup management**~~ - ✅ DONE (auto-cleanup with config)
-7. **Natural language queries** - "show me all tracks over 170 BPM"
-   - Query engine already supports BPM ranges, just needs NL wrapper
+7. ~~**Natural language queries**~~ - ✅ DONE (2026-04-29)
+   - QueryParser supports BPM, playtime, year, artist/title, genre heuristics
 
 ### Lower Priority
 
