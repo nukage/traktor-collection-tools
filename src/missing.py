@@ -24,6 +24,7 @@ class MissingFileInfo:
     status: str = "missing"
     found_paths: list[str] = field(default_factory=list)
     found_sizes: list[int] = field(default_factory=list)
+    best_size_match_index: int = -1
 
     @property
     def full_path(self) -> str:
@@ -151,13 +152,24 @@ def _search_for_file(filename: str, search_root: SearchRoot, timeout: int = SEAR
     return found
 
 
-def _matches_by_size(original_size: Optional[int], found_size: Optional[int]) -> bool:
-    """Check if sizes match exactly (no tolerance)."""
+def _matches_by_size(original_size: Optional[int], found_size: Optional[int], tolerance: float = 0.02) -> bool:
+    """Check if sizes match within tolerance (default ±2%)."""
     if original_size is None or found_size is None:
         return False
     if original_size == 0:
         return False
-    return original_size == found_size
+    ratio = abs(found_size - original_size) / original_size
+    return ratio <= tolerance
+
+
+def _best_size_match(original_size: Optional[int], found_sizes: list[int]) -> tuple[bool, int]:
+    """Find if any size matches within tolerance. Returns (has_match, best_index)."""
+    if original_size is None or not found_sizes:
+        return False, -1
+    for i, size in enumerate(found_sizes):
+        if _matches_by_size(original_size, size):
+            return True, i
+    return False, -1
 
 
 def _strip_track_number(title: str) -> str:
@@ -282,15 +294,11 @@ def find_missing_files(tracks: list[Track], config: Config) -> list[MissingFileI
                     found_paths.append(path)
                     found_sizes.append(size)
 
-            if len(found_paths) > 1 and original_size:
-                filtered_paths = []
-                filtered_sizes = []
-                for path, size in zip(found_paths, found_sizes):
-                    if _matches_by_size(original_size, size):
-                        filtered_paths.append(path)
-                        filtered_sizes.append(size)
-                found_paths = filtered_paths
-                found_sizes = filtered_sizes
+            has_match, best_idx = _best_size_match(original_size, found_sizes)
+            if has_match:
+                best_size_match_index = best_idx
+            elif len(found_paths) > 1:
+                best_size_match_index = -1
 
             if len(found_paths) == 1:
                 status = "found_single"
@@ -306,7 +314,8 @@ def find_missing_files(tracks: list[Track], config: Config) -> list[MissingFileI
             original_path=full_path,
             status=status,
             found_paths=found_paths,
-            found_sizes=found_sizes
+            found_sizes=found_sizes,
+            best_size_match_index=best_size_match_index
         )
         results.append(info)
 
