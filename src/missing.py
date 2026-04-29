@@ -90,6 +90,18 @@ def _is_network_path(path_str: str) -> bool:
     return False
 
 
+def _should_scan_path(path_str: str, config: Config) -> bool:
+    """Determine if a path should be scanned based on config settings."""
+    if not _is_network_path(path_str):
+        return True
+    if not config.network_enabled:
+        return False
+    for folder in config.network_scan_folders:
+        if path_str.startswith(folder):
+            return True
+    return False
+
+
 def _is_drive_accessible(path_str: str) -> bool:
     r"""Check if a drive letter path (e.g. Z:\) is currently accessible."""
     if len(path_str) >= 3 and path_str[1] == ':' and path_str[2] == '\\':
@@ -101,7 +113,7 @@ def _is_drive_accessible(path_str: str) -> bool:
     return True
 
 
-def _search_for_file(filename: str, search_root: SearchRoot, timeout: int = SEARCH_TIMEOUT_PER_FILE) -> list[tuple[str, int]]:
+def _search_for_file(filename: str, search_root: SearchRoot, config: Config = None, timeout: int = SEARCH_TIMEOUT_PER_FILE) -> list[tuple[str, int]]:
     """Search for a file by exact filename match within a search root. Returns list of (path, size)."""
     root_path = Path(search_root.path)
     max_depth = search_root.max_depth
@@ -111,7 +123,7 @@ def _search_for_file(filename: str, search_root: SearchRoot, timeout: int = SEAR
     if not root_path.exists():
         return []
 
-    if _is_network_path(search_root.path):
+    if config and not _should_scan_path(search_root.path, config):
         return []
 
     def _search():
@@ -283,7 +295,7 @@ def find_missing_files(tracks: list[Track], config: Config) -> list[MissingFileI
 
             if not found_paths and not _is_network_path(full_path):
                 for sr in config.search_roots:
-                    matches = _search_for_file(Path(track.file_path).name, sr)
+                    matches = _search_for_file(Path(track.file_path).name, sr, config)
                     for path, size in matches:
                         found_paths.append(path)
                         found_sizes.append(size)

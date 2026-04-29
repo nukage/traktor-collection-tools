@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import json
 import tomllib
 
 
@@ -30,6 +31,9 @@ class Config:
     use_everything: bool = False
     auto_cleanup_backups: bool = True
     backup_retention_days: int = 30
+    network_enabled: bool = False
+    network_scan_folders: list[str] = field(default_factory=list)
+    network_timeout_per_folder: int = 60
 
 
 def get_default_config() -> Config:
@@ -63,6 +67,11 @@ def config_to_dict(cfg: Config) -> dict:
         result["use_everything"] = cfg.use_everything
     result["auto_cleanup_backups"] = cfg.auto_cleanup_backups
     result["backup_retention_days"] = cfg.backup_retention_days
+    result["paths"]["network"] = {
+        "enabled": cfg.network_enabled,
+        "scan_folders": cfg.network_scan_folders,
+        "timeout_per_folder": cfg.network_timeout_per_folder,
+    }
     return result
 
 
@@ -94,6 +103,9 @@ def dict_to_config(d: dict) -> Config:
         use_everything=d.get("everything", {}).get("use_everything", False),
         auto_cleanup_backups=d.get("apply", {}).get("auto_cleanup_backups", True),
         backup_retention_days=d.get("apply", {}).get("backup_retention_days", 30),
+        network_enabled=d.get("paths", {}).get("network", {}).get("enabled", False),
+        network_scan_folders=d.get("paths", {}).get("network", {}).get("scan_folders", []),
+        network_timeout_per_folder=d.get("paths", {}).get("network", {}).get("timeout_per_folder", 60),
     )
 
 
@@ -146,6 +158,13 @@ def save_config(cfg: Config, config_path: Path = None) -> None:
     lines.append("[apply]")
     lines.append(f"auto_cleanup_backups = {cfg.auto_cleanup_backups}")
     lines.append(f"backup_retention_days = {cfg.backup_retention_days}")
+
+    if cfg.network_scan_folders:
+        lines.append("")
+        lines.append("[paths.network]")
+        lines.append(f"enabled = {cfg.network_enabled}")
+        lines.append(f"scan_folders = {json.dumps(cfg.network_scan_folders)}")
+        lines.append(f"timeout_per_folder = {cfg.network_timeout_per_folder}")
 
     with open(config_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
